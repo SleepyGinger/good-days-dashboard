@@ -1,25 +1,27 @@
-# .github/workflows/deploy.yml
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]        # rebuild on every push to main
+    branches: [main]
 
+# required permissions for the Pages actions
 permissions:
-  contents: read            # checkout needs this
-  pages: write              # deploy-pages needs this
-  id-token: write           # deploy-pages OIDC auth
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  # 1) Build the static site and upload it as an artifact
+  build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "npm"
@@ -28,12 +30,22 @@ jobs:
         run: npm ci
 
       - name: Build static site
-        run: npm run build      # next build (writes ./out because of next.config.js)
+        run: npm run build        # writes ./out because of next.config.js
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v2
         with:
-          path: ./out           # must match distDir in next.config.js
+          path: ./out             # folder to publish
 
+  # 2) Deploy the artifact to GitHub Pages
+  deploy:
+    needs: build                 # wait for build job
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
       - name: Deploy to GitHub Pages
+        id: deploy
         uses: actions/deploy-pages@v4
