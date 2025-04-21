@@ -369,22 +369,23 @@ export default function GoodDaysDashboard() {
           </div>
 
           {/* DayPicker grid */}
-          <DayPicker
-            month={month}
-            modifiers={modifiers}
-            modifiersClassNames={modifiersClassNames}
-            onDayClick={(day) => {
-              const iso = localDateToIso(day);
-              const g = byDate.find((d) => d.date === iso);
-              if (g) openDrawer(g);
-            }}
-            components={{ Caption: () => null }}
-            classNames={{ nav: "hidden" }}
-            styles={{
-              head_cell: { color: "white" },
-              day: { borderRadius: "0.5rem" },
-            }}
-          />
+        <DayPicker
+          month={month}
+          modifiers={modifiers}
+          modifiersClassNames={modifiersClassNames}
+          onDayClick={(day) => {
+            const iso = localDateToIso(day);
+            const g   = byDate.find((d) => d.date === iso);
+            if (g) openDrawer(g);
+          }}
+          /* ⬇️ ADD "as any" to silence TS on this non‑standard override */
+          components={{ Caption: () => null } as any}
+          classNames={{ nav: "hidden" }}
+          styles={{
+            head_cell: { color: "white" },
+            day:       { borderRadius: "0.5rem" },
+          }}
+        />
 
           {byDate.length === 0 && (
             <p className="text-center text-sm opacity-60 pt-4">

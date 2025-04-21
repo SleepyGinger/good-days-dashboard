@@ -86,7 +86,7 @@ export default function ThemeDrawer({
           {/* Calendar range picker */}
             <DayPicker
               mode="range"
-              selected={range}
+              selected={range as any}
               // if user clears the range, DayPicker passes undefined – neutralise that
               onSelect={(r) => setRange(r ?? {}) as any}
               numberOfMonths={1}
