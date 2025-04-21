@@ -3,11 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "export": "next build"
+      "dev":    "next dev",
+      "build":  "next build",
+      "export": "next export -o out",     
+      "deploy": "npm run build && npm run export"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.10",

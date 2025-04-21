@@ -1,14 +1,8 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  output: "export",
-  trailingSlash: true,
+module.exports = {
+  output:  "export",      // static HTML export mode
+  distDir: "out",         // Next writes files into /out
+  // IMPORTANT for sub‑path repos:
   basePath: "/good-days-dashboard",
-  assetPrefix: "/good-days-dashboard/",
-  images: { unoptimized: true },
-
-  // skip lint + TS errors when CI builds
-  eslint: { ignoreDuringBuilds: true },
-  typescript: { ignoreBuildErrors: true },
+  assetPrefix: "/good-days-dashboard",
 };
-
-module.exports = nextConfig;
