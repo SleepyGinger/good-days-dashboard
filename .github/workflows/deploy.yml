@@ -1,20 +1,25 @@
+# .github/workflows/deploy.yml
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]                # run on every push to main
+    branches: [main]        # rebuild on every push to main
 
 permissions:
-  contents: write                   # allow the Action to push
+  contents: read            # checkout needs this
+  pages: write              # deploy-pages needs this
+  id-token: write           # deploy-pages OIDC auth
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out source
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "npm"
@@ -23,16 +28,12 @@ jobs:
         run: npm ci
 
       - name: Build static site
-        run: npm run deploy         # produces ./out
+        run: npm run build      # next build (writes ./out because of next.config.js)
 
-      # NEW – upload the ./out folder as the artifact called "github-pages"
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v2
         with:
-          path: ./out               # must match your export dir
+          path: ./out           # must match distDir in next.config.js
 
-      # Deploy that artifact
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
