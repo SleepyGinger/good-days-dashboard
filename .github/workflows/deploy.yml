@@ -20,13 +20,19 @@ jobs:
           cache: "npm"
 
       - name: Install deps
-        run: npm ci                 # or pnpm install / yarn install
+        run: npm ci
 
-      - name: Build & export static site
-        run: npm run deploy         # makes the /out folder
+      - name: Build static site
+        run: npm run deploy         # produces ./out
 
-      - name: Publish to gh-pages
-        uses: peaceiris/actions-gh-pages@v3
+      # NEW – upload the ./out folder as the artifact called "github-pages"
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v2
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./out        # push ./out to the gh-pages branch
+          path: ./out               # must match your export dir
+
+      # Deploy that artifact
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
