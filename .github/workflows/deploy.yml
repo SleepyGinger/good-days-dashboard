@@ -28,6 +28,9 @@ jobs:
 
       - name: Build static site
         run: npm run build          # writes ./out
+        
+      - name: Add CNAME file
+        run: echo "gooddays.dansalazar.org" > out/CNAME
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3   # ← new major
