@@ -1,8 +1,9 @@
 /** @type {import('next').NextConfig} */
+const isProd = process.env.NODE_ENV === "production";
+
 module.exports = {
-  output:  "export",      // static HTML export mode
-  distDir: "out",         // Next writes files into /out
-  // IMPORTANT for sub‑path repos:
-  basePath: "/good-days-dashboard",
-  assetPrefix: "/good-days-dashboard",
+  output: "export",                     
+  basePath: isProd ? "/good-days-dashboard" : "",
+  assetPrefix: isProd ? "/good-days-dashboard" : "",
+  // images: { unoptimized: true },     // add if you use <Image>
 };

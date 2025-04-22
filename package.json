@@ -3,12 +3,11 @@
   "version": "0.1.0",
   "private": true,
 "scripts": {
-  "build":  "next build --no-lint",
-  "export": "next export",
-  "deploy": "npm run build && npm run export",
-  "build":  "next build --no-lint",
-  "deploy": "npm run build"
+  "dev": "next dev -p 3000",
+  "build": "next build --no-lint",  
+  "deploy": "npm run build && git push"
 },
+
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.10",
     "@radix-ui/react-label": "^2.1.4",
