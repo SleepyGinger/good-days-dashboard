@@ -15,6 +15,7 @@ if (typeof globalThis.localStorage !== 'undefined' && typeof globalThis.localSto
 
 module.exports = {
   output: "export",
-  basePath: isProd ? "/good-days-dashboard" : "",
-  assetPrefix: isProd ? "/good-days-dashboard" : "",
+  // No basePath needed when using custom domain (gooddays.dansalazar.org)
+  // basePath: isProd ? "/good-days-dashboard" : "",
+  // assetPrefix: isProd ? "/good-days-dashboard" : "",
 };
