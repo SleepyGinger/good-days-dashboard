@@ -17,7 +17,4 @@ module.exports = {
   output: "export",
   basePath: isProd ? "/good-days-dashboard" : "",
   assetPrefix: isProd ? "/good-days-dashboard" : "",
-  experimental: {
-    instrumentationHook: true,
-  },
 };
