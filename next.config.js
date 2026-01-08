@@ -1,9 +1,23 @@
 /** @type {import('next').NextConfig} */
 const isProd = process.env.NODE_ENV === "production";
 
+// Polyfill localStorage immediately for Node.js 25+ broken implementation
+if (typeof globalThis.localStorage !== 'undefined' && typeof globalThis.localStorage.getItem !== 'function') {
+  globalThis.localStorage = {
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+    clear: () => {},
+    key: () => null,
+    length: 0,
+  };
+}
+
 module.exports = {
-  output: "export",                     
+  output: "export",
   basePath: isProd ? "/good-days-dashboard" : "",
   assetPrefix: isProd ? "/good-days-dashboard" : "",
-  // images: { unoptimized: true },     // add if you use <Image>
+  experimental: {
+    instrumentationHook: true,
+  },
 };

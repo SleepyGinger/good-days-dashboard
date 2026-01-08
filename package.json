@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
 "scripts": {
-  "dev": "next dev -p 3000",
-  "build": "next build --no-lint",  
+  "dev": "NODE_OPTIONS='--require ./fix-localstorage.js' next dev -p 3000",
+  "build": "next build --no-lint",
   "deploy": "npm run build && git push"
 },
 

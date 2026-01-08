@@ -19,12 +19,13 @@ export interface Theme {
   color?: string;
 }
 
-interface Props {
+interface ThemeDrawerProps {
   open: boolean;
-  onOpenChange: (b: boolean) => void;
-  initial?: Theme | null;
-  onSave: (t: Theme) => Promise<void>;
-  onDelete?: (id: string) => Promise<void>;
+  onOpenChange: (open: boolean) => void;
+  initial: Theme | null;
+  onSave: (t: Theme, userId: string | null) => Promise<void>;
+  onDelete?: (id: string, userId: string | null) => Promise<void>;
+  userId: string | null;
 }
 
 export default function ThemeDrawer({
@@ -33,7 +34,8 @@ export default function ThemeDrawer({
   initial,
   onSave,
   onDelete,
-}: Props) {
+  userId,
+}: ThemeDrawerProps) {
   const [title, setTitle] = useState("");
   const [range, setRange] = useState<{ from?: Date; to?: Date }>({});
   const [saving, setSaving] = useState(false);
@@ -60,8 +62,14 @@ export default function ThemeDrawer({
       title: title.trim(),
       start: isoLocal(range.from),
       end: range.to ? isoLocal(range.to) : null,
-    });
+    }, userId);
     setSaving(false);
+    onOpenChange(false);
+  };
+
+  const handleDelete = async () => {
+    if (!initial?.id || !onDelete) return;
+    await onDelete(initial.id, userId);
     onOpenChange(false);
   };
 
@@ -90,7 +98,7 @@ export default function ThemeDrawer({
               // if user clears the range, DayPicker passes undefined – neutralise that
               onSelect={(r) => setRange(r ?? {}) as any}
               numberOfMonths={1}
-              // fall back to today if there’s no from‑date yet
+              // fall back to today if there's no from‑date yet
               defaultMonth={range.from ?? new Date()}
               styles={{ day: { borderRadius: "0.5rem" } }}
             />
@@ -107,10 +115,7 @@ export default function ThemeDrawer({
           {initial?.id && onDelete && (
             <Button
               variant="destructive"
-              onClick={async () => {
-                await onDelete(initial.id as string);
-                onOpenChange(false);
-              }}
+              onClick={handleDelete}
             >
               Delete
             </Button>
