@@ -606,7 +606,7 @@ export default function GoodDaysDashboard() {
               <DrawerTitle>New Entry</DrawerTitle>
             </DrawerHeader>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
               <div className="space-y-2">
                 <label className="text-sm opacity-70">Date</label>
                 <input
@@ -649,7 +649,7 @@ export default function GoodDaysDashboard() {
               </div>
             </div>
 
-            <DrawerFooter className="flex justify-end gap-2">
+            <DrawerFooter className="flex justify-end gap-2 shrink-0">
               <Button variant="ghost" onClick={() => setAddOpen(false)}>
                 Cancel
               </Button>
