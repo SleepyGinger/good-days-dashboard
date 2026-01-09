@@ -85,7 +85,7 @@ export default function ThemeDrawer({
           <div className="space-y-2">
             <label className="text-sm opacity-70">Title</label>
             <input
-              className="w-full rounded bg-gray-800 p-2 text-sm"
+              className="w-full rounded bg-stone-800 p-2 text-sm"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />

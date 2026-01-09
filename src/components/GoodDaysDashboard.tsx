@@ -24,6 +24,7 @@ import "react-day-picker/dist/style.css";
 import { motion } from "framer-motion";
 
 import ThemeDrawer, { Theme } from "./ThemeDrawer";
+import Celebration from "./Celebration";
 
 // Firebase types only - actual imports are done dynamically
 import type { FirebaseApp } from "firebase/app";
@@ -367,6 +368,10 @@ export default function GoodDaysDashboard() {
   const [themeDrawerOpen, setThemeDrawerOpen] = useState(false);
   const [editingTheme, setEditingTheme] = useState<Theme | null>(null);
 
+  /* --- celebration screen --- */
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [savedDayType, setSavedDayType] = useState<"Good day" | "Bad day">("Good day");
+
   /* --- new entry form state --- */
   const [entryDate, setEntryDate] = useState("");
   const [day, setDay] = useState<"Good day" | "Bad day">("Good day");
@@ -381,13 +386,33 @@ export default function GoodDaysDashboard() {
 
   const saveEntry = async () => {
     await upsertEntry({ date: entryDate, day, energy, touch, note }, user?.uid ?? null);
+    // Store the day type for the celebration screen
+    setSavedDayType(day);
+    // Close the drawer and show celebration
+    setAddOpen(false);
+    setShowCelebration(true);
+  };
+
+  const handleCelebrationComplete = () => {
+    setShowCelebration(false);
+    // Reset form after celebration
     setDay("Good day");
     setEnergy("Energized");
     setTouch("Touching");
     setNote("");
     setEntryDate(isoLocal());
-    setAddOpen(false);
   };
+
+  // Dev shortcut: press 'c' to preview celebration
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'c' && !addOpen && !viewOpen && !themeDrawerOpen) {
+        setShowCelebration(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [addOpen, viewOpen, themeDrawerOpen]);
 
   /* --- calendar helpers --- */
   const daysWithNotes = byDate.map((g) => isoToLocalDate(g.date));
@@ -407,8 +432,8 @@ export default function GoodDaysDashboard() {
 
   const modifiers = { hasData: daysWithNotes, hasTheme: themeDates };
   const modifiersClassNames = {
-    hasData: "bg-indigo-600 text-white",
-    hasTheme: "ring-2 ring-indigo-400 ring-inset"
+    hasData: "bg-orange-700 text-white",
+    hasTheme: "ring-2 ring-lime-700 ring-inset"
   };
   const [month, setMonth] = useState<Date | null>(null);
 
@@ -432,7 +457,7 @@ export default function GoodDaysDashboard() {
   /* ── JSX ──────────────────────────────────────── */
   if (loading) {
     return (
-      <div className="dark bg-gray-900 min-h-screen text-gray-100 p-4 flex items-center justify-center">
+      <div className="dark bg-stone-900 min-h-screen text-stone-100 p-4 flex items-center justify-center">
         <p>Loading...</p>
       </div>
     );
@@ -440,11 +465,11 @@ export default function GoodDaysDashboard() {
 
   if (!user) {
     return (
-      <div className="dark bg-gray-900 min-h-screen text-gray-100 p-4 flex items-center justify-center">
+      <div className="dark bg-stone-900 min-h-screen text-stone-100 p-4 flex items-center justify-center">
         <div className="text-center space-y-4">
           <h1 className="text-2xl font-semibold">Good Days</h1>
-          <p className="text-gray-400">Please sign in to continue</p>
-          <Button onClick={signInWithGoogle} className="bg-indigo-600 hover:bg-indigo-500">
+          <p className="text-stone-400">Please sign in to continue</p>
+          <Button onClick={signInWithGoogle} className="bg-orange-700 hover:bg-orange-600">
             Sign in with Google
           </Button>
         </div>
@@ -453,7 +478,7 @@ export default function GoodDaysDashboard() {
   }
 
   return (
-    <div className="dark bg-gray-900 min-h-screen text-gray-100 p-4">
+    <div className="dark bg-stone-900 min-h-screen text-stone-100 p-4">
       {/* centre the dashboard column */}
       <main className="mx-auto max-w-screen-sm flex flex-col gap-6">
         {/* Header */}
@@ -497,9 +522,9 @@ export default function GoodDaysDashboard() {
             layout
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-indigo-600/20 p-4 rounded-2xl shadow-md space-y-2"
+            className="bg-orange-700/20 p-4 rounded-2xl shadow-md space-y-2"
           >
-            <div className="flex items-center gap-2 text-indigo-300">
+            <div className="flex items-center gap-2 text-orange-300">
               <CalendarDays size={18} />
               <span className="uppercase tracking-wider text-xs" suppressHydrationWarning>
                 {formatDate(rand.date)}
@@ -523,7 +548,7 @@ export default function GoodDaysDashboard() {
 
         {/* Calendar */}
         <section className="flex justify-center">
-          <div className="relative bg-gray-800 rounded-lg p-4">
+          <div className="relative bg-stone-800 rounded-lg p-4">
 
             {/* custom month nav */}
             {month && (
@@ -551,7 +576,20 @@ export default function GoodDaysDashboard() {
                   modifiersClassNames={modifiersClassNames}
                   onDayClick={(day) => {
                     const iso = localDateToIso(day);
-                    // Check if this day is part of a theme
+                    const g = byDate.find((d) => d.date === iso);
+
+                    // If there's an entry, always open entry drawer (entries take priority)
+                    if (g && g.items[0]) {
+                      setEntryDate(iso);
+                      setDay(g.items[0].day);
+                      setEnergy(g.items[0].energy);
+                      setTouch(g.items[0].touch);
+                      setNote(g.items[0].note || "");
+                      setAddOpen(true);
+                      return;
+                    }
+
+                    // No entry - check if this day is part of a theme
                     const theme = themes.find((t) => {
                       const start = t.start;
                       const end = t.end || t.start;
@@ -562,22 +600,13 @@ export default function GoodDaysDashboard() {
                       setThemeDrawerOpen(true);
                       return;
                     }
-                    // Open entry drawer for this date (pre-fill if entry exists)
-                    const g = byDate.find((d) => d.date === iso);
+
+                    // No entry and no theme - open new entry drawer
                     setEntryDate(iso);
-                    if (g && g.items[0]) {
-                      // Pre-fill with existing entry data
-                      setDay(g.items[0].day);
-                      setEnergy(g.items[0].energy);
-                      setTouch(g.items[0].touch);
-                      setNote(g.items[0].note || "");
-                    } else {
-                      // Reset to defaults for new entry
-                      setDay("Good day");
-                      setEnergy("Energized");
-                      setTouch("Touching");
-                      setNote("");
-                    }
+                    setDay("Good day");
+                    setEnergy("Energized");
+                    setTouch("Touching");
+                    setNote("");
                     setAddOpen(true);
                   }}
                   /* ⬇️ ADD "as any" to silence TS on this non‑standard override */
@@ -611,7 +640,7 @@ export default function GoodDaysDashboard() {
                 <label className="text-sm opacity-70">Date</label>
                 <input
                   type="date"
-                  className="w-full rounded bg-gray-800 p-2 text-sm text-white"
+                  className="w-full rounded bg-stone-800 p-2 text-sm text-white"
                   value={entryDate}
                   onChange={(e) => setEntryDate(e.target.value)}
                 />
@@ -667,7 +696,7 @@ export default function GoodDaysDashboard() {
               </DrawerHeader>
               <div className="p-6 space-y-4">
                 {drawerData.items.map((item, i) => (
-                  <Card key={i} className="bg-gray-800">
+                  <Card key={i} className="bg-stone-800">
                     <CardContent className="p-4 space-y-2 text-sm">
                       <p>
                         Day: <strong>{item.day}</strong>
@@ -706,10 +735,18 @@ export default function GoodDaysDashboard() {
       {/* Floating + new entry */}
       <Button
         onClick={() => setAddOpen(true)}
-        className="fixed bottom-6 right-6 h-14 w-14 rounded-full p-0 bg-indigo-600 hover:bg-indigo-500"
+        className="fixed bottom-6 right-6 h-14 w-14 rounded-full p-0 bg-orange-700 hover:bg-orange-600"
       >
         <Plus />
       </Button>
+
+      {/* Celebration screen */}
+      {showCelebration && (
+        <Celebration
+          onComplete={handleCelebrationComplete}
+          dayType={savedDayType}
+        />
+      )}
     </div>
   );
 
@@ -747,8 +784,8 @@ function ToggleRow<T extends string>({
             onClick={() => onChange(opt)}
             className={`px-3 py-1 rounded-full text-xs ${
               value === opt
-                ? "bg-indigo-600 text-white"
-                : "bg-gray-700 text-gray-300"
+                ? "bg-orange-700 text-white"
+                : "bg-stone-700 text-stone-300"
             }`}
           >
             {opt}
@@ -761,7 +798,7 @@ function ToggleRow<T extends string>({
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <Card className="bg-gray-800">
+    <Card className="bg-stone-800">
       <CardContent className="p-4 space-y-1">
         <p className="text-xs opacity-60">{label}</p>
         <p className="text-xl font-bold">{value}</p>
