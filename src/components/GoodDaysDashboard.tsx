@@ -18,6 +18,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CalendarPlus,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
@@ -453,6 +455,44 @@ export default function GoodDaysDashboard() {
   const longest = longestStreak(byDate.map((g) => g.date));
   const percentGood = goodDayRate(byDate);
 
+  /* --- sentiment analysis --- */
+  const [sentimentData, setSentimentData] = useState<{
+    score: number;
+    phrase: string;
+  } | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  const analyzeSentiment = async () => {
+    // Get current month's entries with notes
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+    const monthNotes = byDate
+      .filter((g) => g.date.startsWith(currentMonth) && g.items[0]?.note)
+      .map((g) => ({ date: g.date, note: g.items[0].note }));
+
+    if (monthNotes.length === 0) {
+      alert("No notes found for this month to analyze.");
+      return;
+    }
+
+    setAnalyzing(true);
+    try {
+      const res = await fetch("/api/analyze-sentiment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: monthNotes }),
+      });
+      if (!res.ok) throw new Error("Analysis failed");
+      const data = await res.json();
+      setSentimentData(data);
+    } catch (err) {
+      console.error("Sentiment analysis error:", err);
+      alert("Failed to analyze sentiment. Make sure ANTHROPIC_API_KEY is set.");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
 
   /* ── JSX ──────────────────────────────────────── */
   if (loading) {
@@ -542,8 +582,39 @@ export default function GoodDaysDashboard() {
         {/* Stats */}
         <section className="grid sm:grid-cols-3 gap-4">
           <StatCard label="Days Logged" value={byDate.length} />
-          <StatCard label="Longest Streak" value={longest} />
-          <StatCard label="% Good Days" value={percentGood} />
+          <Card className="bg-stone-800">
+            <CardContent className="p-4 space-y-1">
+              <p className="text-xs opacity-60">{new Date().toLocaleDateString(undefined, { month: 'long' })} Vibe</p>
+              {sentimentData ? (
+                <p className="text-lg font-bold leading-tight">{sentimentData.phrase}</p>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={analyzeSentiment}
+                  disabled={analyzing}
+                  className="p-0 h-auto text-orange-400 hover:text-orange-300"
+                >
+                  {analyzing ? (
+                    <Loader2 className="animate-spin mr-1" size={14} />
+                  ) : (
+                    <Sparkles size={14} className="mr-1" />
+                  )}
+                  {analyzing ? "Analyzing..." : "Analyze"}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+          <Card className="bg-stone-800">
+            <CardContent className="p-4 space-y-1">
+              <p className="text-xs opacity-60">Mood Score</p>
+              {sentimentData ? (
+                <p className="text-xl font-bold">{sentimentData.score}/100</p>
+              ) : (
+                <p className="text-xl font-bold text-stone-500">–</p>
+              )}
+            </CardContent>
+          </Card>
         </section>
 
         {/* Calendar */}
