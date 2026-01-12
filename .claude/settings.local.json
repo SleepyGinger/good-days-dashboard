@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export PATH=\"/usr/local/bin:/opt/homebrew/bin:$PATH\")",
+      "Bash(npm run dev:*)",
+      "Bash(cat:*)",
+      "Bash(export PATH=\"/Users/DanSalazar_1/.nvm/versions/node/v22.14.0/bin:$PATH\")",
+      "Bash(npm install:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: add celebration screen and Mediterranean Earth color palette\n\n- Add celebratory confirmation page after saving entries with elegant animations\n- Complete color scheme overhaul to Mediterranean Earth tones \\(terracotta, olive, warm sand\\)\n- Entry clicks now take priority over themes when both exist on same day\n- Press ''c'' to preview celebration animation \\(dev shortcut\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(kill:*)",
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(curl:*)",
+      "Bash(lsof:*)",
+      "Bash(/Users/DanSalazar_1/.nvm/versions/node/v22.14.0/bin/npm run dev -- -p 3000)",
+      "Bash(PATH=\"/Users/DanSalazar_1/.nvm/versions/node/v22.14.0/bin:$PATH\" npm run dev:*)",
+      "Bash(PATH=\"/Users/DanSalazar_1/.nvm/versions/node/v22.14.0/bin:$PATH\" npm install:*)",
+      "Bash(git commit:*)",
+      "Bash(git -C \"/Users/DanSalazar_1/Documents/html/good-days-dashboard\" log --oneline -20)",
+      "Bash(source ~/.zshrc)",
+      "Bash(echo:*)",
+      "Bash(xargs kill -9)"
+    ]
+  }
+}
