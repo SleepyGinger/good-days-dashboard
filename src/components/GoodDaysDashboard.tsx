@@ -514,7 +514,8 @@ export default function GoodDaysDashboard() {
 
     setAnalyzing(true);
     try {
-      const res = await fetch("/api/analyze-sentiment", {
+      const apiUrl = process.env.NEXT_PUBLIC_SENTIMENT_API_URL || "/api/analyze-sentiment";
+      const res = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: monthNotes }),

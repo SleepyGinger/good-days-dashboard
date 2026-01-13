@@ -28,6 +28,8 @@ jobs:
 
       - name: Build static site
         run: npm run build          # writes ./out
+        env:
+          NEXT_PUBLIC_SENTIMENT_API_URL: ${{ vars.NEXT_PUBLIC_SENTIMENT_API_URL }}
         
       - name: Add CNAME file
         run: echo "gooddays.dansalazar.org" > out/CNAME
