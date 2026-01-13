@@ -102,6 +102,7 @@ async function initFirebase() {
 /* ───────────────────────────────────────────────────────────── */
 const LS_ENTRY_KEY = "moodData";
 const LS_THEME_KEY = "themes";
+const LS_SENTIMENT_KEY = "sentimentData";
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof window.document !== "undefined" && typeof localStorage !== "undefined" && typeof localStorage.getItem === "function";
@@ -246,6 +247,33 @@ async function deleteTheme(id: string, userId: string | null) {
     const all = readLocal<Theme>(LS_THEME_KEY);
     delete all[id];
     writeLocal(LS_THEME_KEY, all);
+  }
+}
+
+// Sentiment data persistence (keyed by YYYY-MM)
+type SentimentData = { grade: string; summary: string };
+
+async function saveSentiment(monthKey: string, data: SentimentData) {
+  if (backend === "firebase" && db && firebaseModules) {
+    await firebaseModules.set(firebaseModules.ref(db, `sentimentData/${monthKey}`), data);
+  } else {
+    const all = readLocal<SentimentData>(LS_SENTIMENT_KEY);
+    all[monthKey] = data;
+    writeLocal(LS_SENTIMENT_KEY, all);
+  }
+}
+
+async function loadSentiment(monthKey: string): Promise<SentimentData | null> {
+  if (backend === "firebase" && db && firebaseModules) {
+    return new Promise((resolve) => {
+      const node = firebaseModules!.ref(db, `sentimentData/${monthKey}`);
+      firebaseModules!.onValue(node, (snap: any) => {
+        resolve(snap.val() ?? null);
+      }, { onlyOnce: true });
+    });
+  } else {
+    const all = readLocal<SentimentData>(LS_SENTIMENT_KEY);
+    return all[monthKey] ?? null;
   }
 }
 
@@ -457,17 +485,26 @@ export default function GoodDaysDashboard() {
 
   /* --- sentiment analysis --- */
   const [sentimentData, setSentimentData] = useState<{
-    score: number;
-    phrase: string;
+    grade: string;
+    summary: string;
   } | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
 
+  // Current month key for sentiment storage (YYYY-MM)
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+
+  // Load saved sentiment on mount
+  useEffect(() => {
+    loadSentiment(currentMonthKey).then((data) => {
+      if (data) setSentimentData(data);
+    });
+  }, [currentMonthKey]);
+
   const analyzeSentiment = async () => {
     // Get current month's entries with notes
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
     const monthNotes = byDate
-      .filter((g) => g.date.startsWith(currentMonth) && g.items[0]?.note)
+      .filter((g) => g.date.startsWith(currentMonthKey) && g.items[0]?.note)
       .map((g) => ({ date: g.date, note: g.items[0].note }));
 
     if (monthNotes.length === 0) {
@@ -485,6 +522,8 @@ export default function GoodDaysDashboard() {
       if (!res.ok) throw new Error("Analysis failed");
       const data = await res.json();
       setSentimentData(data);
+      // Save to Firebase/localStorage
+      await saveSentiment(currentMonthKey, data);
     } catch (err) {
       console.error("Sentiment analysis error:", err);
       alert("Failed to analyze sentiment. Make sure ANTHROPIC_API_KEY is set.");
@@ -580,13 +619,25 @@ export default function GoodDaysDashboard() {
         )}
 
         {/* Stats */}
-        <section className="grid sm:grid-cols-3 gap-4">
-          <StatCard label="Days Logged" value={byDate.length} />
+        <section className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <StatCard label="Days Logged" value={byDate.length} />
+            <Card className="bg-stone-800">
+              <CardContent className="p-4 sm:p-6 flex flex-col items-center justify-center text-center">
+                <p className="text-xs sm:text-sm font-bold opacity-60 mb-1">Mood Grade</p>
+                {sentimentData ? (
+                  <p className="text-4xl sm:text-5xl font-bold">{sentimentData.grade}</p>
+                ) : (
+                  <p className="text-4xl sm:text-5xl font-bold text-stone-500">–</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
           <Card className="bg-stone-800">
-            <CardContent className="p-4 space-y-1">
-              <p className="text-xs opacity-60">{new Date().toLocaleDateString(undefined, { month: 'long' })} Vibe</p>
+            <CardContent className="p-4 sm:p-6 text-center">
+              <p className="text-xs sm:text-sm font-bold opacity-60 mb-2">{new Date().toLocaleDateString(undefined, { month: 'long' })} Vibe</p>
               {sentimentData ? (
-                <p className="text-lg font-bold leading-tight">{sentimentData.phrase}</p>
+                <p className="text-sm sm:text-base leading-relaxed">{sentimentData.summary}</p>
               ) : (
                 <Button
                   size="sm"
@@ -602,16 +653,6 @@ export default function GoodDaysDashboard() {
                   )}
                   {analyzing ? "Analyzing..." : "Analyze"}
                 </Button>
-              )}
-            </CardContent>
-          </Card>
-          <Card className="bg-stone-800">
-            <CardContent className="p-4 space-y-1">
-              <p className="text-xs opacity-60">Mood Score</p>
-              {sentimentData ? (
-                <p className="text-xl font-bold">{sentimentData.score}/100</p>
-              ) : (
-                <p className="text-xl font-bold text-stone-500">–</p>
               )}
             </CardContent>
           </Card>
@@ -870,9 +911,9 @@ function ToggleRow<T extends string>({
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <Card className="bg-stone-800">
-      <CardContent className="p-4 space-y-1">
-        <p className="text-xs opacity-60">{label}</p>
-        <p className="text-xl font-bold">{value}</p>
+      <CardContent className="p-4 sm:p-6 flex flex-col items-center justify-center text-center">
+        <p className="text-xs sm:text-sm font-bold opacity-60 mb-1">{label}</p>
+        <p className="text-4xl sm:text-5xl font-bold">{value}</p>
       </CardContent>
     </Card>
   );

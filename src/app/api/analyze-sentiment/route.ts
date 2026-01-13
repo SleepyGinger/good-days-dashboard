@@ -21,19 +21,19 @@ export async function POST(request: NextRequest) {
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 256,
+      max_tokens: 512,
       messages: [
         {
           role: "user",
           content: `Analyze the following journal entries from this month and provide:
-1. A sentiment score from 0-100 (0 = very negative, 50 = neutral, 100 = very positive)
-2. A short evocative phrase (3-6 words) that captures the overall vibe/theme of the month
+1. A letter grade for the overall mood (A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-, F)
+2. A brief evocative summary (2-3 sentences) that captures the overall vibe, themes, and emotional arc of the month
 
 Journal entries:
 ${notesText}
 
 Respond in JSON format only:
-{"score": <number>, "phrase": "<string>"}`,
+{"grade": "<letter>", "summary": "<string>"}`,
         },
       ],
     });
@@ -48,8 +48,8 @@ Respond in JSON format only:
     const result = JSON.parse(textContent.text);
 
     return NextResponse.json({
-      score: result.score,
-      phrase: result.phrase,
+      grade: result.grade,
+      summary: result.summary,
     });
   } catch (error) {
     console.error("Sentiment analysis error:", error);
