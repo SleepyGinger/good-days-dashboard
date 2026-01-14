@@ -1,37 +1,26 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-export const config = {
-  runtime: "edge",
-};
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Set CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-export default async function handler(req: Request) {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-      },
-    });
+    return res.status(200).end();
   }
 
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { "Content-Type": "application/json" },
-    });
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    const { notes } = await req.json();
+    const { notes } = req.body;
 
     if (!notes || !Array.isArray(notes) || notes.length === 0) {
-      return new Response(JSON.stringify({ error: "No notes provided" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return res.status(400).json({ error: "No notes provided" });
     }
 
     const anthropic = new Anthropic();
@@ -87,30 +76,12 @@ Respond in JSON format only:
       }
     }
 
-    return new Response(
-      JSON.stringify({
-        grade: result.grade,
-        summary: result.summary,
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
-      }
-    );
+    return res.status(200).json({
+      grade: result.grade,
+      summary: result.summary,
+    });
   } catch (error) {
     console.error("Sentiment analysis error:", error);
-    return new Response(
-      JSON.stringify({ error: "Failed to analyze sentiment" }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
-      }
-    );
+    return res.status(500).json({ error: "Failed to analyze sentiment" });
   }
 }
