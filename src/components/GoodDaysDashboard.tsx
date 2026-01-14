@@ -494,12 +494,13 @@ export default function GoodDaysDashboard() {
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
 
-  // Load saved sentiment on mount
+  // Load saved sentiment once Firebase is ready
   useEffect(() => {
+    if (!firebaseReady) return;
     loadSentiment(currentMonthKey).then((data) => {
       if (data) setSentimentData(data);
     });
-  }, [currentMonthKey]);
+  }, [currentMonthKey, firebaseReady]);
 
   const analyzeSentiment = async () => {
     // Get current month's entries with notes
