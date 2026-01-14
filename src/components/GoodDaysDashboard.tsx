@@ -20,7 +20,10 @@ import {
   CalendarPlus,
   Sparkles,
   Loader2,
+  ImagePlus,
+  X,
 } from "lucide-react";
+import { uploadPhotoFile } from "@/lib/photoStorageService";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { motion } from "framer-motion";
@@ -135,6 +138,7 @@ interface Entry {
   energy: "Energized" | "Tired";
   touch: "Touching" | "No Touching";
   note: string;
+  photoUrl?: string;
 }
 interface Grouped {
   date: string;
@@ -312,7 +316,6 @@ function useAuth(firebaseReady: boolean) {
       console.log("Calling signInWithPopup...");
       const result = await firebaseModules.signInWithPopup(auth, provider);
       console.log("Sign in successful:", result.user?.email);
-      // Manually update user state after successful sign-in
       setUser(result.user);
       setLoading(false);
     } catch (error) {
@@ -408,6 +411,8 @@ export default function GoodDaysDashboard() {
   const [energy, setEnergy] = useState<"Energized" | "Tired">("Energized");
   const [touch, setTouch] = useState<"Touching" | "No Touching">("Touching");
   const [note, setNote] = useState("");
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoLoading, setPhotoLoading] = useState(false);
 
   // Set initial entryDate on client only to avoid hydration mismatch
   useEffect(() => {
@@ -415,12 +420,36 @@ export default function GoodDaysDashboard() {
   }, []);
 
   const saveEntry = async () => {
-    await upsertEntry({ date: entryDate, day, energy, touch, note }, user?.uid ?? null);
+    await upsertEntry({ date: entryDate, day, energy, touch, note, ...(photoUrl && { photoUrl }) }, user?.uid ?? null);
     // Store the day type for the celebration screen
     setSavedDayType(day);
     // Close the drawer and show celebration
     setAddOpen(false);
     setShowCelebration(true);
+  };
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleAddPhoto = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setPhotoLoading(true);
+    try {
+      const dateKey = isoToKey(entryDate);
+      const permanentUrl = await uploadPhotoFile(file, user.uid, dateKey);
+      setPhotoUrl(permanentUrl);
+    } catch (error) {
+      console.error('Photo upload error:', error);
+    } finally {
+      setPhotoLoading(false);
+      // Reset input so same file can be selected again
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleCelebrationComplete = () => {
@@ -430,6 +459,7 @@ export default function GoodDaysDashboard() {
     setEnergy("Energized");
     setTouch("Touching");
     setNote("");
+    setPhotoUrl(null);
     setEntryDate(isoLocal());
   };
 
@@ -611,6 +641,13 @@ export default function GoodDaysDashboard() {
                 {formatDate(rand.date)}
               </span>
             </div>
+            {rand.items[0]?.photoUrl && (
+              <img
+                src={rand.items[0].photoUrl}
+                alt="Day photo"
+                className="w-full h-48 object-cover rounded-lg"
+              />
+            )}
             <p className="line-clamp-3 text-sm opacity-90">
               {rand.items[0]?.note || "(no note)"}
             </p>
@@ -699,6 +736,7 @@ export default function GoodDaysDashboard() {
                       setEnergy(g.items[0].energy);
                       setTouch(g.items[0].touch);
                       setNote(g.items[0].note || "");
+                      setPhotoUrl(g.items[0].photoUrl || null);
                       setAddOpen(true);
                       return;
                     }
@@ -721,6 +759,7 @@ export default function GoodDaysDashboard() {
                     setEnergy("Energized");
                     setTouch("Touching");
                     setNote("");
+                    setPhotoUrl(null);
                     setAddOpen(true);
                   }}
                   /* ⬇️ ADD "as any" to silence TS on this non‑standard override */
@@ -790,6 +829,49 @@ export default function GoodDaysDashboard() {
                   placeholder="What happened today?"
                 />
               </div>
+
+              {/* Photo picker */}
+              <div className="space-y-2">
+                <label className="text-sm opacity-70">Photo</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                {photoUrl ? (
+                  <div className="relative inline-block">
+                    <img
+                      src={photoUrl}
+                      alt="Selected photo"
+                      className="w-24 h-24 object-cover rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPhotoUrl(null)}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddPhoto}
+                    disabled={photoLoading}
+                    className="flex items-center gap-2"
+                  >
+                    {photoLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <ImagePlus className="w-4 h-4" />
+                    )}
+                    {photoLoading ? "Uploading..." : "Add Photo"}
+                  </Button>
+                )}
+              </div>
             </div>
 
             <DrawerFooter className="flex justify-end gap-2 shrink-0">
@@ -812,6 +894,13 @@ export default function GoodDaysDashboard() {
                 {drawerData.items.map((item, i) => (
                   <Card key={i} className="bg-stone-800">
                     <CardContent className="p-4 space-y-2 text-sm">
+                      {item.photoUrl && (
+                        <img
+                          src={item.photoUrl}
+                          alt="Day photo"
+                          className="w-full h-48 object-cover rounded-lg mb-3"
+                        />
+                      )}
                       <p>
                         Day: <strong>{item.day}</strong>
                       </p>
