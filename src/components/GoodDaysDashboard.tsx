@@ -138,7 +138,8 @@ interface Entry {
   energy: "Energized" | "Tired";
   touch: "Touching" | "No Touching";
   note: string;
-  photoUrl?: string;
+  photoUrl?: string; // legacy single photo
+  photoUrls?: string[]; // multiple photos (up to 3)
 }
 interface Grouped {
   date: string;
@@ -163,6 +164,13 @@ function localDateToIso(d: Date) {
 }
 function isoToKey(iso: string) {
   return iso.replace(/-/g, "");
+}
+
+// Helper to get photos from entry (handles legacy photoUrl and new photoUrls)
+function getEntryPhotos(entry: Entry): string[] {
+  if (entry.photoUrls && entry.photoUrls.length > 0) return entry.photoUrls;
+  if (entry.photoUrl) return [entry.photoUrl];
+  return [];
 }
 
 /* ───────────────────────────────────────────────────────────── */
@@ -411,8 +419,10 @@ export default function GoodDaysDashboard() {
   const [energy, setEnergy] = useState<"Energized" | "Tired">("Energized");
   const [touch, setTouch] = useState<"Touching" | "No Touching">("Touching");
   const [note, setNote] = useState("");
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [photoLoading, setPhotoLoading] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
 
   // Set initial entryDate on client only to avoid hydration mismatch
   useEffect(() => {
@@ -420,7 +430,7 @@ export default function GoodDaysDashboard() {
   }, []);
 
   const saveEntry = async () => {
-    await upsertEntry({ date: entryDate, day, energy, touch, note, ...(photoUrl && { photoUrl }) }, user?.uid ?? null);
+    await upsertEntry({ date: entryDate, day, energy, touch, note, ...(photoUrls.length > 0 && { photoUrls }) }, user?.uid ?? null);
     // Store the day type for the celebration screen
     setSavedDayType(day);
     // Close the drawer and show celebration
@@ -437,12 +447,13 @@ export default function GoodDaysDashboard() {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+    if (photoUrls.length >= 3) return; // Max 3 photos
 
     setPhotoLoading(true);
     try {
       const dateKey = isoToKey(entryDate);
       const permanentUrl = await uploadPhotoFile(file, user.uid, dateKey);
-      setPhotoUrl(permanentUrl);
+      setPhotoUrls(prev => [...prev, permanentUrl]);
     } catch (error) {
       console.error('Photo upload error:', error);
     } finally {
@@ -459,7 +470,7 @@ export default function GoodDaysDashboard() {
     setEnergy("Energized");
     setTouch("Touching");
     setNote("");
-    setPhotoUrl(null);
+    setPhotoUrls([]);
     setEntryDate(isoLocal());
   };
 
@@ -641,9 +652,9 @@ export default function GoodDaysDashboard() {
                 {formatDate(rand.date)}
               </span>
             </div>
-            {rand.items[0]?.photoUrl && (
+            {getEntryPhotos(rand.items[0])[0] && (
               <img
-                src={rand.items[0].photoUrl}
+                src={getEntryPhotos(rand.items[0])[0]}
                 alt="Day photo"
                 className="w-full h-48 object-cover rounded-lg"
               />
@@ -656,46 +667,6 @@ export default function GoodDaysDashboard() {
             </Button>
           </motion.div>
         )}
-
-        {/* Stats */}
-        <section className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <StatCard label="Days Logged" value={byDate.length} />
-            <Card className="bg-stone-800">
-              <CardContent className="p-4 sm:p-6 flex flex-col items-center justify-center text-center">
-                <p className="text-xs sm:text-sm font-bold opacity-60 mb-1">Mood Grade</p>
-                {sentimentData ? (
-                  <p className="text-4xl sm:text-5xl font-bold">{sentimentData.grade}</p>
-                ) : (
-                  <p className="text-4xl sm:text-5xl font-bold text-stone-500">–</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-          <Card className="bg-stone-800">
-            <CardContent className="p-4 sm:p-6 text-center">
-              <p className="text-xs sm:text-sm font-bold opacity-60 mb-2">{new Date().toLocaleDateString(undefined, { month: 'long' })} Vibe</p>
-              {sentimentData ? (
-                <p className="text-sm sm:text-base leading-relaxed">{sentimentData.summary}</p>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={analyzeSentiment}
-                  disabled={analyzing}
-                  className="p-0 h-auto text-orange-400 hover:text-orange-300"
-                >
-                  {analyzing ? (
-                    <Loader2 className="animate-spin mr-1" size={14} />
-                  ) : (
-                    <Sparkles size={14} className="mr-1" />
-                  )}
-                  {analyzing ? "Analyzing..." : "Analyze"}
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        </section>
 
         {/* Calendar */}
         <section className="flex justify-center">
@@ -736,7 +707,7 @@ export default function GoodDaysDashboard() {
                       setEnergy(g.items[0].energy);
                       setTouch(g.items[0].touch);
                       setNote(g.items[0].note || "");
-                      setPhotoUrl(g.items[0].photoUrl || null);
+                      setPhotoUrls(getEntryPhotos(g.items[0]));
                       setAddOpen(true);
                       return;
                     }
@@ -759,7 +730,7 @@ export default function GoodDaysDashboard() {
                     setEnergy("Energized");
                     setTouch("Touching");
                     setNote("");
-                    setPhotoUrl(null);
+                    setPhotoUrls([]);
                     setAddOpen(true);
                   }}
                   /* ⬇️ ADD "as any" to silence TS on this non‑standard override */
@@ -781,58 +752,102 @@ export default function GoodDaysDashboard() {
           </div>
         </section>
 
+        {/* Stats */}
+        <section className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <StatCard label="Days Logged" value={byDate.length} />
+            <Card className="bg-stone-800">
+              <CardContent className="p-4 sm:p-6 flex flex-col items-center justify-center text-center">
+                <p className="text-xs sm:text-sm font-bold opacity-60 mb-1">Mood Grade</p>
+                {sentimentData ? (
+                  <p className="text-4xl sm:text-5xl font-bold">{sentimentData.grade}</p>
+                ) : (
+                  <p className="text-4xl sm:text-5xl font-bold text-stone-500">–</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+          <Card className="bg-stone-800">
+            <CardContent className="p-4 sm:p-6 text-center">
+              <p className="text-xs sm:text-sm font-bold opacity-60 mb-2">{new Date().toLocaleDateString(undefined, { month: 'long' })} Vibe</p>
+              {sentimentData ? (
+                <div className="space-y-2">
+                  <p className="text-sm sm:text-base leading-relaxed">{sentimentData.summary}</p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={analyzeSentiment}
+                    disabled={analyzing}
+                    className="p-0 h-auto text-orange-400 hover:text-orange-300 text-xs"
+                  >
+                    {analyzing ? (
+                      <Loader2 className="animate-spin mr-1" size={12} />
+                    ) : (
+                      <RefreshCcw size={12} className="mr-1" />
+                    )}
+                    {analyzing ? "Analyzing..." : "Re-analyze"}
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={analyzeSentiment}
+                  disabled={analyzing}
+                  className="p-0 h-auto text-orange-400 hover:text-orange-300"
+                >
+                  {analyzing ? (
+                    <Loader2 className="animate-spin mr-1" size={14} />
+                  ) : (
+                    <Sparkles size={14} className="mr-1" />
+                  )}
+                  {analyzing ? "Analyzing..." : "Analyze"}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
         {/* New Entry Drawer */}
-        <Drawer open={addOpen} onOpenChange={setAddOpen}>
+        <Drawer open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) setShowDatePicker(false); }}>
           <DrawerContent>
             <DrawerHeader>
               <DrawerTitle>New Entry</DrawerTitle>
             </DrawerHeader>
 
             <div className="p-6 space-y-6 overflow-y-auto flex-1">
-              <div className="space-y-2">
+              <div className="space-y-2 relative">
                 <label className="text-sm opacity-70">Date</label>
-                <input
-                  type="date"
-                  className="w-full rounded bg-stone-800 p-2 text-sm text-white"
-                  value={entryDate}
-                  onChange={(e) => setEntryDate(e.target.value)}
-                />
-              </div>
-
-              <ToggleRow
-                label="Day"
-                left="Good day"
-                right="Bad day"
-                value={day}
-                onChange={setDay}
-              />
-              <ToggleRow
-                label="Energy"
-                left="Energized"
-                right="Tired"
-                value={energy}
-                onChange={setEnergy}
-              />
-              <ToggleRow
-                label="Touch"
-                left="Touching"
-                right="No Touching"
-                value={touch}
-                onChange={setTouch}
-              />
-
-              <div className="space-y-2">
-                <label className="text-sm opacity-70">Note</label>
-                <Textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="What happened today?"
-                />
+                <button
+                  type="button"
+                  onClick={() => setShowDatePicker(!showDatePicker)}
+                  className="w-full rounded bg-stone-800 p-2 text-sm text-white text-left flex items-center justify-between"
+                >
+                  <span>{entryDate ? new Date(entryDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : "Select date"}</span>
+                  <CalendarDays className="w-4 h-4 opacity-70" />
+                </button>
+                {showDatePicker && (
+                  <div className="absolute z-50 mt-1 bg-stone-800 rounded-lg shadow-xl border border-stone-700">
+                    <DayPicker
+                      mode="single"
+                      selected={entryDate ? new Date(entryDate + "T00:00:00") : undefined}
+                      onSelect={(date) => {
+                        if (date) {
+                          setEntryDate(isoLocal(date));
+                        }
+                        setShowDatePicker(false);
+                      }}
+                      styles={{
+                        head_cell: { color: "white" },
+                        day: { borderRadius: "0.5rem" },
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Photo picker */}
-              <div className="space-y-2">
-                <label className="text-sm opacity-70">Photo</label>
+              <div>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -840,20 +855,44 @@ export default function GoodDaysDashboard() {
                   onChange={handleFileSelect}
                   className="hidden"
                 />
-                {photoUrl ? (
-                  <div className="relative inline-block">
-                    <img
-                      src={photoUrl}
-                      alt="Selected photo"
-                      className="w-24 h-24 object-cover rounded-lg"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setPhotoUrl(null)}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
+                {photoUrls.length > 0 ? (
+                  <div className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory">
+                    {photoUrls.map((url, idx) => (
+                      <div key={idx} className="relative flex-shrink-0 snap-center" style={{ width: 'calc(100% - 1rem)', maxWidth: '280px' }}>
+                        <img
+                          src={url}
+                          alt={`Photo ${idx + 1}`}
+                          className="w-full h-48 object-cover rounded-lg cursor-pointer"
+                          onClick={() => setEnlargedPhoto(url)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm("Remove this photo?")) {
+                              setPhotoUrls(prev => prev.filter((_, i) => i !== idx));
+                            }
+                          }}
+                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    {photoUrls.length < 3 && (
+                      <button
+                        type="button"
+                        onClick={handleAddPhoto}
+                        disabled={photoLoading}
+                        className="flex-shrink-0 w-32 h-48 rounded-lg border-2 border-dashed border-stone-600 flex flex-col items-center justify-center gap-2 text-stone-400 hover:border-stone-500 hover:text-stone-300 snap-center"
+                      >
+                        {photoLoading ? (
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                        ) : (
+                          <ImagePlus className="w-6 h-6" />
+                        )}
+                        <span className="text-xs">{photoLoading ? "Uploading..." : "Add"}</span>
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <Button
@@ -872,13 +911,69 @@ export default function GoodDaysDashboard() {
                   </Button>
                 )}
               </div>
+
+              <div className="space-y-2">
+                <label className="text-sm opacity-70">Note</label>
+                <Textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="What happened today?"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-stone-700">
+                <div className="flex gap-1">
+                  {(["Good day", "Bad day"] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setDay(opt)}
+                      className={`px-3 py-1 rounded-full text-xs ${
+                        day === opt ? "bg-orange-700 text-white" : "bg-stone-700 text-stone-300"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+                <div className="w-px h-5 bg-stone-600" />
+                <div className="flex gap-1">
+                  {(["Energized", "Tired"] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setEnergy(opt)}
+                      className={`px-3 py-1 rounded-full text-xs ${
+                        energy === opt ? "bg-orange-700 text-white" : "bg-stone-700 text-stone-300"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+                <div className="w-px h-5 bg-stone-600" />
+                <div className="flex gap-1">
+                  {(["Touching", "No Touching"] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setTouch(opt)}
+                      className={`px-3 py-1 rounded-full text-xs ${
+                        touch === opt ? "bg-orange-700 text-white" : "bg-stone-700 text-stone-300"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            <DrawerFooter className="flex justify-end gap-2 shrink-0">
-              <Button variant="ghost" onClick={() => setAddOpen(false)}>
+            <DrawerFooter className="flex flex-col gap-2 shrink-0">
+              <Button onClick={saveEntry} className="w-full">Save</Button>
+              <Button variant="ghost" onClick={() => setAddOpen(false)} className="w-full">
                 Cancel
               </Button>
-              <Button onClick={saveEntry}>Save</Button>
             </DrawerFooter>
           </DrawerContent>
         </Drawer>
@@ -893,26 +988,29 @@ export default function GoodDaysDashboard() {
               <div className="p-6 space-y-4">
                 {drawerData.items.map((item, i) => (
                   <Card key={i} className="bg-stone-800">
-                    <CardContent className="p-4 space-y-2 text-sm">
-                      {item.photoUrl && (
-                        <img
-                          src={item.photoUrl}
-                          alt="Day photo"
-                          className="w-full h-48 object-cover rounded-lg mb-3"
-                        />
+                    <CardContent className="p-4 space-y-3 text-sm">
+                      {getEntryPhotos(item).length > 0 && (
+                        <div className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory -mx-2 px-2">
+                          {getEntryPhotos(item).map((url, idx) => (
+                            <img
+                              key={idx}
+                              src={url}
+                              alt={`Photo ${idx + 1}`}
+                              className="flex-shrink-0 w-full max-h-[60vh] object-contain rounded-lg cursor-pointer snap-center"
+                              style={{ minWidth: 'calc(100% - 0.5rem)' }}
+                              onClick={() => setEnlargedPhoto(url)}
+                            />
+                          ))}
+                        </div>
                       )}
-                      <p>
-                        Day: <strong>{item.day}</strong>
-                      </p>
-                      <p>
-                        Energy: <strong>{item.energy}</strong>
-                      </p>
-                      <p>
-                        Touch: <strong>{item.touch}</strong>
-                      </p>
                       {item.note && (
-                        <p className="pt-1 whitespace-pre-wrap">{item.note}</p>
+                        <p className="whitespace-pre-wrap text-base">{item.note}</p>
                       )}
+                      <div className="flex items-center gap-4 text-xs opacity-70 pt-2 border-t border-stone-700">
+                        <span>{item.day}</span>
+                        <span>{item.energy}</span>
+                        <span>{item.touch}</span>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
@@ -949,6 +1047,27 @@ export default function GoodDaysDashboard() {
           onComplete={handleCelebrationComplete}
           dayType={savedDayType}
         />
+      )}
+
+      {/* Photo lightbox */}
+      {enlargedPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setEnlargedPhoto(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/70 hover:text-white"
+            onClick={() => setEnlargedPhoto(null)}
+          >
+            <X className="w-8 h-8" />
+          </button>
+          <img
+            src={enlargedPhoto}
+            alt="Enlarged photo"
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );
