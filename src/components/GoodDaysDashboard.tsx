@@ -39,14 +39,14 @@ import type { User } from "firebase/auth";
 /* 1. Firebase init                                             */
 /* ───────────────────────────────────────────────────────────── */
 const firebaseConfig = {
-  apiKey: "AIzaSyCOGsJMsgjvHmXJ7j17hzrsHDCjKmwaGQA",
-  authDomain: "good-days-5515e.firebaseapp.com",
-  databaseURL: "https://good-days-5515e-default-rtdb.firebaseio.com",
-  projectId: "good-days-5515e",
-  storageBucket: "good-days-5515e.firebasestorage.app",
-  messagingSenderId: "50443495976",
-  appId: "1:50443495976:web:16e4d1fac4a23cda83631d",
-  measurementId: "G-WXFZ6CSKPJ"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
 let backend: "firebase" | "local" = "local";
