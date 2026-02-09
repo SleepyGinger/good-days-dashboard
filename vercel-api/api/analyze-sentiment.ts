@@ -35,9 +35,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       messages: [
         {
           role: "user",
-          content: `Analyze the following journal entries from this month and provide:
+          content: `Analyze the following journal entries from the last 60 days and provide:
 1. A letter grade for the overall mood (A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-, F)
-2. A brief evocative summary (2-3 sentences) that captures the overall vibe, themes, and emotional arc of the month
+2. A brief evocative summary (2-3 sentences) that captures the overall vibe, themes, and emotional arc of this period
 
 Journal entries:
 ${notesText}
