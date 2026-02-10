@@ -191,6 +191,7 @@ const FIREBASE_API_KEY = firebaseConfig.apiKey;
 
 // Firebase REST auth token (obtained via Identity Toolkit REST API)
 let restAuthToken: string | null = null;
+export function getRestAuthToken() { return restAuthToken; }
 
 async function firebaseRestSignIn(email: string, password: string) {
   const res = await fetch(
@@ -619,7 +620,7 @@ export default function GoodDaysDashboard() {
     try {
       const dateKey = isoToKey(entryDate);
       const urls = await Promise.all(
-        toUpload.map((file) => uploadPhotoFile(file, user.uid, dateKey))
+        toUpload.map((file) => uploadPhotoFile(file, user.uid, dateKey, restAuthToken))
       );
       setPhotoUrls(prev => [...prev, ...urls]);
     } catch (error) {
