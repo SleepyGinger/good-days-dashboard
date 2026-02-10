@@ -62,6 +62,7 @@ let firebaseModules: {
   remove: any;
   GoogleAuthProvider: any;
   signInWithPopup: any;
+  signInAnonymously: any;
   signOut: any;
   onAuthStateChanged: any;
 } | null = null;
@@ -72,28 +73,37 @@ async function initFirebase() {
 
   firebaseInitialized = true;
   try {
-    const [appModule, dbModule, authModule] = await Promise.all([
-      import("firebase/app"),
-      import("firebase/database"),
-      import("firebase/auth"),
-    ]);
+    // Add a timeout so Firebase init doesn't hang forever (e.g. in Capacitor WebView)
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Firebase init timed out")), 5000)
+    );
+    const init = (async () => {
+      const [appModule, dbModule, authModule] = await Promise.all([
+        import("firebase/app"),
+        import("firebase/database"),
+        import("firebase/auth"),
+      ]);
 
-    const app = appModule.initializeApp(firebaseConfig);
-    db = dbModule.getDatabase(app);
-    auth = authModule.getAuth(app);
-    firebaseModules = {
-      ref: dbModule.ref,
-      onValue: dbModule.onValue,
-      off: dbModule.off,
-      set: dbModule.set,
-      push: dbModule.push,
-      remove: dbModule.remove,
-      GoogleAuthProvider: authModule.GoogleAuthProvider,
-      signInWithPopup: authModule.signInWithPopup,
-      signOut: authModule.signOut,
-      onAuthStateChanged: authModule.onAuthStateChanged,
-    };
-    backend = "firebase";
+      const app = appModule.initializeApp(firebaseConfig);
+      db = dbModule.getDatabase(app);
+      auth = authModule.getAuth(app);
+      firebaseModules = {
+        ref: dbModule.ref,
+        onValue: dbModule.onValue,
+        off: dbModule.off,
+        set: dbModule.set,
+        push: dbModule.push,
+        remove: dbModule.remove,
+        GoogleAuthProvider: authModule.GoogleAuthProvider,
+        signInWithPopup: authModule.signInWithPopup,
+        signInAnonymously: authModule.signInAnonymously,
+        signOut: authModule.signOut,
+        onAuthStateChanged: authModule.onAuthStateChanged,
+      };
+      backend = "firebase";
+    })();
+
+    await Promise.race([init, timeout]);
   } catch (err) {
     console.warn("⚠️ Firebase unavailable, falling back to localStorage", err);
     backend = "local";
@@ -174,11 +184,87 @@ function getEntryPhotos(entry: Entry): string[] {
 }
 
 /* ───────────────────────────────────────────────────────────── */
-/* 4. Entries: subscribe / upsert                                */
+/* 4. Firebase REST API helpers (for Capacitor)                  */
+/* ───────────────────────────────────────────────────────────── */
+const FIREBASE_DB_URL = firebaseConfig.databaseURL;
+const FIREBASE_API_KEY = firebaseConfig.apiKey;
+
+// Firebase REST auth token (obtained via Identity Toolkit REST API)
+let restAuthToken: string | null = null;
+
+async function firebaseRestSignIn(email: string, password: string) {
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    }
+  );
+  if (!res.ok) throw new Error(`Firebase REST sign-in failed: ${res.status}`);
+  const data = await res.json();
+  restAuthToken = data.idToken;
+  return data;
+}
+
+function authParam() {
+  return restAuthToken ? `?auth=${restAuthToken}` : "";
+}
+
+async function firebaseRestGet(path: string) {
+  const res = await fetch(`${FIREBASE_DB_URL}/${path}.json${authParam()}`);
+  if (!res.ok) throw new Error(`Firebase REST GET ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+async function firebaseRestPut(path: string, data: any) {
+  const res = await fetch(`${FIREBASE_DB_URL}/${path}.json${authParam()}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Firebase REST PUT ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+async function firebaseRestPost(path: string, data: any) {
+  const res = await fetch(`${FIREBASE_DB_URL}/${path}.json${authParam()}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Firebase REST POST ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+async function firebaseRestDelete(path: string) {
+  const res = await fetch(`${FIREBASE_DB_URL}/${path}.json${authParam()}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Firebase REST DELETE ${path} failed: ${res.status}`);
+}
+
+const isCapacitorEnv = typeof window !== "undefined" && !!(window as any).Capacitor;
+
+/* ───────────────────────────────────────────────────────────── */
+/* 5. Entries: subscribe / upsert                                */
 /* ───────────────────────────────────────────────────────────── */
 function subscribeEntries(cb: (raw: Record<string, Entry>) => void, userId: string | null) {
+  if (isCapacitorEnv) {
+    // Capacitor: poll Firebase REST API
+    let active = true;
+    const poll = async () => {
+      try {
+        const data = await firebaseRestGet("moodData");
+        if (active) cb(data ?? {});
+      } catch (err) {
+        console.error("REST subscribeEntries error:", err);
+        if (active) cb(readLocal<Entry>(LS_ENTRY_KEY));
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 30000); // refresh every 30s
+    return () => { active = false; clearInterval(interval); };
+  }
   if (backend === "firebase" && db && firebaseModules) {
-    // Use root-level moodData path
     const node = firebaseModules.ref(db, `moodData`);
     const unsub = firebaseModules.onValue(node, (snap: any) => cb(snap.val() ?? {}));
     return () => firebaseModules!.off(node, "value", unsub);
@@ -192,8 +278,15 @@ function subscribeEntries(cb: (raw: Record<string, Entry>) => void, userId: stri
 
 async function upsertEntry(entry: Entry, userId: string | null) {
   const key = isoToKey(entry.date);
+  if (isCapacitorEnv) {
+    try {
+      await firebaseRestPut(`moodData/${key}`, entry);
+      return;
+    } catch (err) {
+      console.error("REST upsertEntry error:", err);
+    }
+  }
   if (backend === "firebase" && db && firebaseModules) {
-    // Use root-level moodData path
     await firebaseModules.set(firebaseModules.ref(db, `moodData/${key}`), entry);
   } else {
     const all = readLocal<Entry>(LS_ENTRY_KEY);
@@ -203,15 +296,33 @@ async function upsertEntry(entry: Entry, userId: string | null) {
 }
 
 /* ───────────────────────────────────────────────────────────── */
-/* 5. Themes: subscribe / CRUD                                   */
+/* 6. Themes: subscribe / CRUD                                   */
 /* ───────────────────────────────────────────────────────────── */
 function defaultColor() {
   return "#93c5fd"; // pastel indigo‑300
 }
 
 function subscribeThemes(cb: (t: Theme[]) => void, userId: string | null) {
+  if (isCapacitorEnv) {
+    let active = true;
+    const poll = async () => {
+      try {
+        const raw: Record<string, any> = (await firebaseRestGet("themes")) ?? {};
+        const arr = Object.entries(raw).map(([id, v]) => ({ id, ...v })) as Theme[];
+        if (active) cb(arr);
+      } catch (err) {
+        console.error("REST subscribeThemes error:", err);
+        if (active) {
+          const raw = readLocal<Theme>(LS_THEME_KEY);
+          cb(Object.entries(raw).map(([id, v]) => ({ id, ...v })) as Theme[]);
+        }
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 30000);
+    return () => { active = false; clearInterval(interval); };
+  }
   if (backend === "firebase" && db && firebaseModules) {
-    // Use root-level themes path
     const node = firebaseModules.ref(db, `themes`);
     const unsub = firebaseModules.onValue(node, (snap: any) => {
       const raw: Record<string, any> = snap.val() ?? {};
@@ -239,10 +350,18 @@ function subscribeThemes(cb: (t: Theme[]) => void, userId: string | null) {
 
 async function saveTheme(t: Theme, userId: string | null) {
   const { id, ...data } = { ...t, color: t.color || defaultColor() };
+  if (isCapacitorEnv) {
+    try {
+      if (id) await firebaseRestPut(`themes/${id}`, data);
+      else await firebaseRestPost("themes", data);
+      return;
+    } catch (err) {
+      console.error("REST saveTheme error:", err);
+    }
+  }
   if (backend === "firebase" && db && firebaseModules) {
-    // Use root-level themes path
-    if (id) await firebaseModules.set(firebaseModules.ref(db, `themes/${id}`), data); // UPDATE
-    else await firebaseModules.set(firebaseModules.push(firebaseModules.ref(db, `themes`)), data); // CREATE
+    if (id) await firebaseModules.set(firebaseModules.ref(db, `themes/${id}`), data);
+    else await firebaseModules.set(firebaseModules.push(firebaseModules.ref(db, `themes`)), data);
   } else {
     const all = readLocal<Theme>(LS_THEME_KEY);
     if (id) all[id] = { id, ...data };
@@ -252,8 +371,15 @@ async function saveTheme(t: Theme, userId: string | null) {
 }
 
 async function deleteTheme(id: string, userId: string | null) {
+  if (isCapacitorEnv) {
+    try {
+      await firebaseRestDelete(`themes/${id}`);
+      return;
+    } catch (err) {
+      console.error("REST deleteTheme error:", err);
+    }
+  }
   if (backend === "firebase" && db && firebaseModules) {
-    // Use root-level themes path
     await firebaseModules.remove(firebaseModules.ref(db, `themes/${id}`));
   } else {
     const all = readLocal<Theme>(LS_THEME_KEY);
@@ -266,6 +392,10 @@ async function deleteTheme(id: string, userId: string | null) {
 type SentimentData = { grade: string; summary: string };
 
 async function saveSentiment(monthKey: string, data: SentimentData) {
+  if (isCapacitorEnv) {
+    try { await firebaseRestPut(`sentimentData/${monthKey}`, data); return; }
+    catch (err) { console.error("REST saveSentiment error:", err); }
+  }
   if (backend === "firebase" && db && firebaseModules) {
     await firebaseModules.set(firebaseModules.ref(db, `sentimentData/${monthKey}`), data);
   } else {
@@ -276,6 +406,10 @@ async function saveSentiment(monthKey: string, data: SentimentData) {
 }
 
 async function loadSentiment(monthKey: string): Promise<SentimentData | null> {
+  if (isCapacitorEnv) {
+    try { return await firebaseRestGet(`sentimentData/${monthKey}`); }
+    catch (err) { console.error("REST loadSentiment error:", err); }
+  }
   if (backend === "firebase" && db && firebaseModules) {
     return new Promise((resolve) => {
       const node = firebaseModules!.ref(db, `sentimentData/${monthKey}`);
@@ -293,11 +427,38 @@ async function loadSentiment(monthKey: string): Promise<SentimentData | null> {
 /* 6. Custom hooks                                               */
 /* ───────────────────────────────────────────────────────────── */
 function useAuth(firebaseReady: boolean) {
+  const isCapacitor = typeof window !== "undefined" && !!(window as any).Capacitor;
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log("useAuth effect", { firebaseReady, auth: !!auth, firebaseModules: !!firebaseModules });
+    console.log("useAuth effect", { firebaseReady, auth: !!auth, firebaseModules: !!firebaseModules, isCapacitor });
+
+    // In Capacitor, sign in via Firebase REST API (SDK auth doesn't work in WebViews)
+    if (isCapacitor && firebaseReady) {
+      const email = process.env.NEXT_PUBLIC_IOS_AUTH_EMAIL;
+      const password = process.env.NEXT_PUBLIC_IOS_AUTH_PASSWORD;
+      if (email && password) {
+        console.log("Capacitor: signing in via REST API...");
+        firebaseRestSignIn(email, password)
+          .then((data) => {
+            console.log("REST sign-in succeeded:", data.email);
+            setUser({ uid: data.localId, email: data.email } as any);
+            setLoading(false);
+          })
+          .catch((err) => {
+            console.error("REST sign-in failed:", err);
+            setUser({ uid: "capacitor-local", email: "local@device" } as any);
+            setLoading(false);
+          });
+      } else {
+        console.log("Capacitor: no credentials, using stub user");
+        setUser({ uid: "capacitor-local", email: "local@device" } as any);
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!firebaseReady || !auth || !firebaseModules) {
       if (firebaseReady) setLoading(false);
       return;
@@ -346,7 +507,7 @@ function useAuth(firebaseReady: boolean) {
 function useEntries(userId: string | null, firebaseReady: boolean) {
   const [byDate, setByDate] = useState<Grouped[]>([]);
   useEffect(() => {
-    if (!firebaseReady || !firebaseModules) return;
+    if (!firebaseReady) return;
     const unsub = subscribeEntries((raw) => {
       const m = new Map<string, Entry[]>();
       Object.values(raw).forEach((e: any) => {
@@ -366,7 +527,7 @@ function useEntries(userId: string | null, firebaseReady: boolean) {
 function useThemes(userId: string | null, firebaseReady: boolean) {
   const [themes, setThemes] = useState<Theme[]>([]);
   useEffect(() => {
-    if (!firebaseReady || !firebaseModules) return;
+    if (!firebaseReady) return;
     return subscribeThemes(setThemes, userId);
   }, [userId, firebaseReady]);
   return themes;
@@ -531,42 +692,92 @@ export default function GoodDaysDashboard() {
   } | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
 
-  // Current month key for sentiment storage (YYYY-MM)
+  // Sentiment storage key (single key for rolling 60-day window)
   const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+  const sentimentKey = "last60";
+
+  // Calculate date 60 days ago
+  const sixtyDaysAgo = new Date(now);
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+  const sixtyDaysAgoIso = isoLocal(sixtyDaysAgo);
 
   // Load saved sentiment once Firebase is ready
   useEffect(() => {
     if (!firebaseReady) return;
-    loadSentiment(currentMonthKey).then((data) => {
+    loadSentiment(sentimentKey).then((data) => {
       if (data) setSentimentData(data);
     });
-  }, [currentMonthKey, firebaseReady]);
+  }, [sentimentKey, firebaseReady]);
 
   const analyzeSentiment = async () => {
-    // Get current month's entries with notes
-    const monthNotes = byDate
-      .filter((g) => g.date.startsWith(currentMonthKey) && g.items[0]?.note)
+    // Get entries from last 60 days with notes
+    const recentNotes = byDate
+      .filter((g) => g.date >= sixtyDaysAgoIso && g.items[0]?.note)
       .map((g) => ({ date: g.date, note: g.items[0].note }));
 
-    if (monthNotes.length === 0) {
-      alert("No notes found for this month to analyze.");
+    if (recentNotes.length === 0) {
+      alert("No notes found in the last 60 days to analyze.");
       return;
     }
 
     setAnalyzing(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_SENTIMENT_API_URL || "/api/analyze-sentiment";
-      const res = await fetch(apiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: monthNotes }),
-      });
-      if (!res.ok) throw new Error("Analysis failed");
-      const data = await res.json();
+      let data: { grade: string; summary: string };
+
+      const clientApiKey = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
+      if (clientApiKey) {
+        // Direct API call (Capacitor / personal builds)
+        const notesText = recentNotes
+          .map((n) => `${n.date}: ${n.note}`)
+          .join("\n\n");
+
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": clientApiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 512,
+            messages: [
+              {
+                role: "user",
+                content: `Analyze the following journal entries from the last 60 days and provide:
+1. A letter grade for the overall mood (A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-, F)
+2. A brief evocative summary (2-3 sentences) that captures the overall vibe, themes, and emotional arc of this period
+
+Journal entries:
+${notesText}
+
+Respond in JSON format only:
+{"grade": "<letter>", "summary": "<string>"}`,
+              },
+            ],
+          }),
+        });
+        if (!res.ok) throw new Error("Analysis failed");
+        const msg = await res.json();
+        const text = msg.content?.find((c: any) => c.type === "text")?.text;
+        if (!text) throw new Error("No text response from Claude");
+        data = JSON.parse(text);
+      } else {
+        // Server-side API route (web deployment)
+        const apiUrl = process.env.NEXT_PUBLIC_SENTIMENT_API_URL || "/api/analyze-sentiment";
+        const res = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notes: recentNotes }),
+        });
+        if (!res.ok) throw new Error("Analysis failed");
+        data = await res.json();
+      }
+
       setSentimentData(data);
       // Save to Firebase/localStorage
-      await saveSentiment(currentMonthKey, data);
+      await saveSentiment(sentimentKey, data);
     } catch (err) {
       console.error("Sentiment analysis error:", err);
       alert("Failed to analyze sentiment. Make sure ANTHROPIC_API_KEY is set.");
@@ -769,7 +980,7 @@ export default function GoodDaysDashboard() {
           </div>
           <Card className="bg-stone-800">
             <CardContent className="p-4 sm:p-6 text-center">
-              <p className="text-xs sm:text-sm font-bold opacity-60 mb-2">{new Date().toLocaleDateString(undefined, { month: 'long' })} Vibe</p>
+              <p className="text-xs sm:text-sm font-bold opacity-60 mb-2">Recent Vibe</p>
               {sentimentData ? (
                 <div className="space-y-2">
                   <p className="text-sm sm:text-base leading-relaxed">{sentimentData.summary}</p>
@@ -1036,7 +1247,8 @@ export default function GoodDaysDashboard() {
       {/* Floating + new entry */}
       <Button
         onClick={() => setAddOpen(true)}
-        className="fixed bottom-6 right-6 h-14 w-14 rounded-full p-0 bg-orange-700 hover:bg-orange-600"
+        className="fixed right-6 h-14 w-14 rounded-full p-0 bg-orange-700 hover:bg-orange-600"
+        style={{ bottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}
       >
         <Plus />
       </Button>
@@ -1052,11 +1264,12 @@ export default function GoodDaysDashboard() {
       {/* Photo lightbox */}
       {enlargedPhoto && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] bg-black flex items-center justify-center"
           onClick={() => setEnlargedPhoto(null)}
         >
           <button
-            className="absolute top-4 right-4 text-white/70 hover:text-white"
+            className="absolute right-4 text-white/70 hover:text-white z-10"
+            style={{ top: "calc(1rem + env(safe-area-inset-top, 0px))" }}
             onClick={() => setEnlargedPhoto(null)}
           >
             <X className="w-8 h-8" />
@@ -1064,7 +1277,8 @@ export default function GoodDaysDashboard() {
           <img
             src={enlargedPhoto}
             alt="Enlarged photo"
-            className="max-w-full max-h-full object-contain"
+            className="w-full h-full object-contain touch-pinch-zoom"
+            style={{ touchAction: "pinch-zoom" }}
             onClick={(e) => e.stopPropagation()}
           />
         </div>
