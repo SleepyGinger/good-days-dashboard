@@ -606,20 +606,26 @@ export default function GoodDaysDashboard() {
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    if (photoUrls.length >= 3) return; // Max 3 photos
+    const files = e.target.files;
+    if (!files || files.length === 0 || !user) return;
+
+    const remaining = 3 - photoUrls.length;
+    if (remaining <= 0) return;
+
+    // Take only as many files as slots remain
+    const toUpload = Array.from(files).slice(0, remaining);
 
     setPhotoLoading(true);
     try {
       const dateKey = isoToKey(entryDate);
-      const permanentUrl = await uploadPhotoFile(file, user.uid, dateKey);
-      setPhotoUrls(prev => [...prev, permanentUrl]);
+      const urls = await Promise.all(
+        toUpload.map((file) => uploadPhotoFile(file, user.uid, dateKey))
+      );
+      setPhotoUrls(prev => [...prev, ...urls]);
     } catch (error) {
       console.error('Photo upload error:', error);
     } finally {
       setPhotoLoading(false);
-      // Reset input so same file can be selected again
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -1063,6 +1069,7 @@ Respond in JSON format only:
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={handleFileSelect}
                   className="hidden"
                 />
