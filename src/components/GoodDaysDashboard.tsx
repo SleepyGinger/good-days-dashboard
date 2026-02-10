@@ -701,13 +701,13 @@ export default function GoodDaysDashboard() {
   sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
   const sixtyDaysAgoIso = isoLocal(sixtyDaysAgo);
 
-  // Load saved sentiment once Firebase is ready
+  // Load saved sentiment once Firebase is ready and user is authenticated
   useEffect(() => {
-    if (!firebaseReady) return;
+    if (!firebaseReady || !user) return;
     loadSentiment(sentimentKey).then((data) => {
       if (data) setSentimentData(data);
     });
-  }, [sentimentKey, firebaseReady]);
+  }, [sentimentKey, firebaseReady, user]);
 
   const analyzeSentiment = async () => {
     // Get entries from last 60 days with notes
