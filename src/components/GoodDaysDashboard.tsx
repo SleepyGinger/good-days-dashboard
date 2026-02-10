@@ -557,9 +557,12 @@ export default function GoodDaysDashboard() {
 
   /* --- random banner --- */
   const [rand, setRand] = useState<Grouped | null>(null);
+  const randInitialized = React.useRef(false);
   useEffect(() => {
-    if (byDate.length)
+    if (byDate.length && !randInitialized.current) {
+      randInitialized.current = true;
       setRand(byDate[Math.floor(Math.random() * byDate.length)]);
+    }
   }, [byDate]);
 
   /* --- drawers state --- */
