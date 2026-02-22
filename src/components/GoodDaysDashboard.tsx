@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Drawer,
@@ -24,6 +25,9 @@ import {
   X,
 } from "lucide-react";
 import { uploadPhotoFile } from "@/lib/photoStorageService";
+import PhotoDay from "@/lib/photoDayPlugin";
+import type { PhotoDayPhoto } from "@/lib/photoDayPlugin";
+import { Capacitor } from "@capacitor/core";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { motion } from "framer-motion";
@@ -589,10 +593,58 @@ export default function GoodDaysDashboard() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
 
+  // "Photos from this Day" state (iOS only)
+  const [dayPhotos, setDayPhotos] = useState<PhotoDayPhoto[]>([]);
+  const [dayPhotosLoading, setDayPhotosLoading] = useState(false);
+  const [dayPhotosPermission, setDayPhotosPermission] = useState<string>("prompt");
+  const [selectedDayPhotoIds, setSelectedDayPhotoIds] = useState<Set<string>>(new Set());
+  const [uploadingDayPhotoIds, setUploadingDayPhotoIds] = useState<Set<string>>(new Set());
+
   // Set initial entryDate on client only to avoid hydration mismatch
   useEffect(() => {
     if (!entryDate) setEntryDate(isoLocal());
   }, []);
+
+  // Fetch photos from device library when entry date changes (iOS only)
+  useEffect(() => {
+    if (!isCapacitorEnv || !addOpen || !entryDate) {
+      setDayPhotos([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchDayPhotos = async () => {
+      try {
+        const { photos: perm } = await PhotoDay.checkPermissions();
+        if (cancelled) return;
+        setDayPhotosPermission(perm);
+
+        if (perm === "prompt") {
+          const { photos: newPerm } = await PhotoDay.requestPermissions();
+          if (cancelled) return;
+          setDayPhotosPermission(newPerm);
+          if (newPerm !== "granted" && newPerm !== "limited") return;
+        } else if (perm !== "granted" && perm !== "limited") {
+          return;
+        }
+
+        setDayPhotosLoading(true);
+        const result = await PhotoDay.getPhotosForDate({ date: entryDate });
+        if (!cancelled) {
+          setDayPhotos(result.photos);
+        }
+      } catch (err) {
+        console.error("Failed to fetch day photos:", err);
+        if (!cancelled) setDayPhotos([]);
+      } finally {
+        if (!cancelled) setDayPhotosLoading(false);
+      }
+    };
+
+    fetchDayPhotos();
+    return () => { cancelled = true; };
+  }, [entryDate, addOpen]);
 
   const saveEntry = async () => {
     await upsertEntry({ date: entryDate, day, energy, touch, note, ...(photoUrls.length > 0 && { photoUrls }) }, user?.uid ?? null);
@@ -634,6 +686,39 @@ export default function GoodDaysDashboard() {
     }
   };
 
+  const handleDayPhotoSelect = async (photoId: string) => {
+    if (!user || photoUrls.length >= 3) return;
+    if (selectedDayPhotoIds.has(photoId)) return;
+
+    setSelectedDayPhotoIds((prev) => new Set(prev).add(photoId));
+    setUploadingDayPhotoIds((prev) => new Set(prev).add(photoId));
+    try {
+      const { filePath } = await PhotoDay.getFullPhoto({ id: photoId });
+
+      // Fetch the temp file and wrap as a File object
+      const response = await fetch(Capacitor.convertFileSrc(filePath));
+      const blob = await response.blob();
+      const file = new File([blob], `day-photo-${Date.now()}.jpg`, { type: "image/jpeg" });
+
+      const dateKey = isoToKey(entryDate);
+      const url = await uploadPhotoFile(file, user.uid, dateKey, restAuthToken);
+      setPhotoUrls((prev) => (prev.length < 3 ? [...prev, url] : prev));
+    } catch (err) {
+      console.error("Day photo select error:", err);
+      setSelectedDayPhotoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(photoId);
+        return next;
+      });
+    } finally {
+      setUploadingDayPhotoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(photoId);
+        return next;
+      });
+    }
+  };
+
   const handleCelebrationComplete = () => {
     setShowCelebration(false);
     // Reset form after celebration
@@ -643,6 +728,9 @@ export default function GoodDaysDashboard() {
     setNote("");
     setPhotoUrls([]);
     setEntryDate(isoLocal());
+    setDayPhotos([]);
+    setSelectedDayPhotoIds(new Set());
+    setUploadingDayPhotoIds(new Set());
   };
 
   // Dev shortcut: press 'c' to preview celebration
@@ -877,7 +965,8 @@ Respond in JSON format only:
               <img
                 src={getEntryPhotos(rand.items[0])[0]}
                 alt="Day photo"
-                className="w-full h-48 object-cover rounded-lg"
+                className="w-full h-48 object-cover rounded-lg cursor-pointer"
+                onClick={() => setEnlargedPhoto(getEntryPhotos(rand.items[0])[0])}
               />
             )}
             <p className="line-clamp-3 text-sm opacity-90">
@@ -1066,6 +1155,64 @@ Respond in JSON format only:
                   </div>
                 )}
               </div>
+
+              {/* Photos from this Day (iOS only) */}
+              {isCapacitorEnv && (
+                <div>
+                  <label className="text-sm opacity-70">Photos from this Day</label>
+                  {dayPhotosLoading ? (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-stone-400">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Loading photos...</span>
+                    </div>
+                  ) : dayPhotosPermission === "denied" ? (
+                    <p className="mt-2 text-sm text-stone-500">
+                      Photo access denied. Enable in Settings &gt; Good Days &gt; Photos.
+                    </p>
+                  ) : dayPhotos.length === 0 ? (
+                    <p className="mt-2 text-sm text-stone-500">No photos found for this date.</p>
+                  ) : (
+                    <div className="grid grid-cols-4 gap-1.5 mt-2 max-h-48 overflow-y-auto">
+                      {dayPhotos.map((photo) => {
+                        const isSelected = selectedDayPhotoIds.has(photo.id);
+                        const isUploading = uploadingDayPhotoIds.has(photo.id);
+                        const atMax = photoUrls.length >= 3;
+                        return (
+                          <button
+                            key={photo.id}
+                            type="button"
+                            disabled={isSelected || atMax}
+                            onClick={() => handleDayPhotoSelect(photo.id)}
+                            className={`relative aspect-square rounded-lg overflow-hidden ${
+                              atMax && !isSelected ? "opacity-40" : ""
+                            }`}
+                          >
+                            <img
+                              src={Capacitor.convertFileSrc(photo.thumbnailPath)}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                            {isUploading && (
+                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                <Loader2 className="w-5 h-5 animate-spin text-white" />
+                              </div>
+                            )}
+                            {isSelected && !isUploading && (
+                              <div className="absolute inset-0 bg-orange-700/40 flex items-center justify-center">
+                                <div className="w-6 h-6 rounded-full bg-orange-600 flex items-center justify-center">
+                                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Photo picker */}
               <div>
@@ -1274,25 +1421,7 @@ Respond in JSON format only:
 
       {/* Photo lightbox */}
       {enlargedPhoto && (
-        <div
-          className="fixed inset-0 z-[9999] bg-black flex items-center justify-center"
-          onClick={() => setEnlargedPhoto(null)}
-        >
-          <button
-            className="absolute right-4 text-white/70 hover:text-white z-10"
-            style={{ top: "calc(1rem + env(safe-area-inset-top, 0px))" }}
-            onClick={() => setEnlargedPhoto(null)}
-          >
-            <X className="w-8 h-8" />
-          </button>
-          <img
-            src={enlargedPhoto}
-            alt="Enlarged photo"
-            className="w-full h-full object-contain touch-pinch-zoom"
-            style={{ touchAction: "pinch-zoom" }}
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
+        <PhotoLightbox src={enlargedPhoto} onClose={() => setEnlargedPhoto(null)} />
       )}
     </div>
   );
@@ -1498,4 +1627,119 @@ function packThemes(themes: Theme[], month: Date) {
     });
 
   return segments;
+}
+
+/* ───────────────────────────────────────────────────────────── */
+/* PhotoLightbox – pinch-to-zoom lightbox for Capacitor WebView  */
+/* ───────────────────────────────────────────────────────────── */
+function PhotoLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  const [scale, setScale] = useState(1);
+  const [translate, setTranslate] = useState({ x: 0, y: 0 });
+  const gestureRef = useRef<{
+    startDist: number;
+    startScale: number;
+    startX: number;
+    startY: number;
+    startTx: number;
+    startTy: number;
+    isPinch: boolean;
+  } | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      gestureRef.current = {
+        startDist: Math.hypot(dx, dy),
+        startScale: scale,
+        startX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        startY: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        startTx: translate.x,
+        startTy: translate.y,
+        isPinch: true,
+      };
+    } else if (e.touches.length === 1 && scale > 1) {
+      gestureRef.current = {
+        startDist: 0,
+        startScale: scale,
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+        startTx: translate.x,
+        startTy: translate.y,
+        isPinch: false,
+      };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!gestureRef.current) return;
+    if (e.touches.length === 2 && gestureRef.current.isPinch) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const newScale = Math.min(
+        Math.max(gestureRef.current.startScale * (dist / gestureRef.current.startDist), 1),
+        5,
+      );
+      setScale(newScale);
+
+      // pan while pinching
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      setTranslate({
+        x: gestureRef.current.startTx + midX - gestureRef.current.startX,
+        y: gestureRef.current.startTy + midY - gestureRef.current.startY,
+      });
+    } else if (e.touches.length === 1 && !gestureRef.current.isPinch && scale > 1) {
+      const dx = e.touches[0].clientX - gestureRef.current.startX;
+      const dy = e.touches[0].clientY - gestureRef.current.startY;
+      setTranslate({
+        x: gestureRef.current.startTx + dx,
+        y: gestureRef.current.startTy + dy,
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    gestureRef.current = null;
+    if (scale <= 1) {
+      setScale(1);
+      setTranslate({ x: 0, y: 0 });
+    }
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] bg-black flex items-center justify-center"
+      style={{ touchAction: "none" }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onClick={() => {
+        if (scale <= 1) onClose();
+      }}
+    >
+      <button
+        className="absolute right-4 text-white/70 hover:text-white z-10"
+        style={{ top: "calc(1rem + env(safe-area-inset-top, 0px))" }}
+        onClick={(e) => { e.stopPropagation(); onClose(); }}
+      >
+        <X className="w-8 h-8" />
+      </button>
+      <img
+        src={src}
+        alt="Enlarged photo"
+        className="w-full h-full object-contain"
+        style={{
+          transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
+          transition: gestureRef.current ? "none" : "transform 0.2s ease-out",
+        }}
+        onClick={(e) => e.stopPropagation()}
+        draggable={false}
+      />
+    </div>,
+    document.body,
+  );
 }
