@@ -40,3 +40,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ios native build
+/ios/
+
+# misc artifacts
+screenshot.png
+session-notes.md

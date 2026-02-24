@@ -7,7 +7,8 @@
     "build": "next build --no-lint",
     "build:ios": "CAPACITOR_BUILD=1 next build --no-lint",
     "cap:sync": "npx cap sync",
-    "deploy": "npm run build && git push"
+    "deploy": "npm run build && git push",
+    "deploy:ios": "npm run build:ios && npx cap sync ios && xcodebuild archive -project ios/App/App.xcodeproj -scheme 'Good Days' -archivePath ios/build/GoodDays.xcarchive -destination 'generic/platform=iOS' -allowProvisioningUpdates && xcodebuild -exportArchive -archivePath ios/build/GoodDays.xcarchive -exportOptionsPlist ios/ExportOptions.plist -allowProvisioningUpdates"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

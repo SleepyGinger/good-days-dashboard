@@ -1156,8 +1156,8 @@ Respond in JSON format only:
                 )}
               </div>
 
-              {/* Photos from this Day (iOS only) */}
-              {isCapacitorEnv && (
+              {/* Photos from this Day (iOS only, hidden when entry already has photos) */}
+              {isCapacitorEnv && photoUrls.length === 0 && (
                 <div>
                   <label className="text-sm opacity-70">Photos from this Day</label>
                   {dayPhotosLoading ? (
@@ -1290,52 +1290,7 @@ Respond in JSON format only:
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-stone-700">
-                <div className="flex gap-1">
-                  {(["Good day", "Bad day"] as const).map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setDay(opt)}
-                      className={`px-3 py-1 rounded-full text-xs ${
-                        day === opt ? "bg-orange-700 text-white" : "bg-stone-700 text-stone-300"
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-                <div className="w-px h-5 bg-stone-600" />
-                <div className="flex gap-1">
-                  {(["Energized", "Tired"] as const).map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setEnergy(opt)}
-                      className={`px-3 py-1 rounded-full text-xs ${
-                        energy === opt ? "bg-orange-700 text-white" : "bg-stone-700 text-stone-300"
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-                <div className="w-px h-5 bg-stone-600" />
-                <div className="flex gap-1">
-                  {(["Touching", "No Touching"] as const).map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setTouch(opt)}
-                      className={`px-3 py-1 rounded-full text-xs ${
-                        touch === opt ? "bg-orange-700 text-white" : "bg-stone-700 text-stone-300"
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* day/energy/touch toggles hidden – not currently used */}
             </div>
 
             <DrawerFooter className="flex flex-col gap-2 shrink-0">
