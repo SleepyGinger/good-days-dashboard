@@ -599,6 +599,7 @@ export default function GoodDaysDashboard() {
   const [dayPhotosPermission, setDayPhotosPermission] = useState<string>("prompt");
   const [selectedDayPhotoIds, setSelectedDayPhotoIds] = useState<Set<string>>(new Set());
   const [uploadingDayPhotoIds, setUploadingDayPhotoIds] = useState<Set<string>>(new Set());
+  const [dayPhotoGalleryIndex, setDayPhotoGalleryIndex] = useState<number | null>(null);
 
   // Set initial entryDate on client only to avoid hydration mismatch
   useEffect(() => {
@@ -731,6 +732,7 @@ export default function GoodDaysDashboard() {
     setDayPhotos([]);
     setSelectedDayPhotoIds(new Set());
     setUploadingDayPhotoIds(new Set());
+    setDayPhotoGalleryIndex(null);
   };
 
   // Dev shortcut: press 'c' to preview celebration
@@ -1173,19 +1175,15 @@ Respond in JSON format only:
                     <p className="mt-2 text-sm text-stone-500">No photos found for this date.</p>
                   ) : (
                     <div className="grid grid-cols-4 gap-1.5 mt-2 max-h-48 overflow-y-auto">
-                      {dayPhotos.map((photo) => {
+                      {dayPhotos.map((photo, idx) => {
                         const isSelected = selectedDayPhotoIds.has(photo.id);
                         const isUploading = uploadingDayPhotoIds.has(photo.id);
-                        const atMax = photoUrls.length >= 3;
                         return (
                           <button
                             key={photo.id}
                             type="button"
-                            disabled={isSelected || atMax}
-                            onClick={() => handleDayPhotoSelect(photo.id)}
-                            className={`relative aspect-square rounded-lg overflow-hidden ${
-                              atMax && !isSelected ? "opacity-40" : ""
-                            }`}
+                            onClick={() => setDayPhotoGalleryIndex(idx)}
+                            className="relative aspect-square rounded-lg overflow-hidden"
                           >
                             <img
                               src={Capacitor.convertFileSrc(photo.thumbnailPath)}
@@ -1377,6 +1375,19 @@ Respond in JSON format only:
       {/* Photo lightbox */}
       {enlargedPhoto && (
         <PhotoLightbox src={enlargedPhoto} onClose={() => setEnlargedPhoto(null)} />
+      )}
+
+      {/* Day photo gallery (iOS device photo picker) */}
+      {dayPhotoGalleryIndex !== null && dayPhotos.length > 0 && (
+        <DayPhotoGallery
+          photos={dayPhotos}
+          initialIndex={dayPhotoGalleryIndex}
+          selectedIds={selectedDayPhotoIds}
+          uploadingIds={uploadingDayPhotoIds}
+          photoCount={photoUrls.length}
+          onSelect={handleDayPhotoSelect}
+          onClose={() => setDayPhotoGalleryIndex(null)}
+        />
       )}
     </div>
   );
@@ -1694,6 +1705,191 @@ function PhotoLightbox({ src, onClose }: { src: string; onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
         draggable={false}
       />
+    </div>,
+    document.body,
+  );
+}
+
+/* ───────────────────────────────────────────────────────────── */
+/* DayPhotoGallery – swipeable full-screen picker for device photos */
+/* ───────────────────────────────────────────────────────────── */
+function DayPhotoGallery({
+  photos,
+  initialIndex,
+  selectedIds,
+  uploadingIds,
+  photoCount,
+  onSelect,
+  onClose,
+}: {
+  photos: PhotoDayPhoto[];
+  initialIndex: number;
+  selectedIds: Set<string>;
+  uploadingIds: Set<string>;
+  photoCount: number;
+  onSelect: (photoId: string) => void;
+  onClose: () => void;
+}) {
+  const [index, setIndex] = useState(initialIndex);
+  const [fullUrls, setFullUrls] = useState<Record<string, string>>({});
+  const loadingRef = useRef<Set<string>>(new Set());
+  const lastTapRef = useRef(0);
+  const swipeRef = useRef<{ startX: number; moved: boolean } | null>(null);
+
+  const photo = photos[index];
+
+  // Load full-size photo for current and adjacent indices
+  useEffect(() => {
+    [index - 1, index, index + 1]
+      .filter((i) => i >= 0 && i < photos.length)
+      .forEach(async (i) => {
+        const p = photos[i];
+        if (loadingRef.current.has(p.id)) return;
+        loadingRef.current.add(p.id);
+        try {
+          const { filePath } = await PhotoDay.getFullPhoto({ id: p.id });
+          setFullUrls((prev) => ({
+            ...prev,
+            [p.id]: Capacitor.convertFileSrc(filePath),
+          }));
+        } catch {
+          loadingRef.current.delete(p.id);
+        }
+      });
+  }, [index, photos]);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      swipeRef.current = { startX: e.touches[0].clientX, moved: false };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (swipeRef.current && e.touches.length === 1) {
+      if (Math.abs(e.touches[0].clientX - swipeRef.current.startX) > 10) {
+        swipeRef.current.moved = true;
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!swipeRef.current) return;
+    const endX = e.changedTouches[0].clientX;
+    const diff = swipeRef.current.startX - endX;
+    const wasMoved = swipeRef.current.moved;
+    swipeRef.current = null;
+
+    if (wasMoved && Math.abs(diff) > 50) {
+      if (diff > 0 && index < photos.length - 1) setIndex((i) => i + 1);
+      else if (diff < 0 && index > 0) setIndex((i) => i - 1);
+    } else if (!wasMoved) {
+      // Tap — check for double-tap
+      const now = Date.now();
+      if (now - lastTapRef.current < 300) {
+        if (!selectedIds.has(photo.id) && photoCount < 3) {
+          onSelect(photo.id);
+        }
+        lastTapRef.current = 0;
+      } else {
+        lastTapRef.current = now;
+      }
+    }
+  };
+
+  const imgSrc = fullUrls[photo.id] || Capacitor.convertFileSrc(photo.thumbnailPath);
+  const isSelected = selectedIds.has(photo.id);
+  const isUploading = uploadingIds.has(photo.id);
+  const atMax = photoCount >= 3;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] bg-black flex flex-col"
+      style={{ touchAction: "none" }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-4 shrink-0"
+        style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top, 0px))" }}
+      >
+        <button onClick={onClose} className="text-white/70 hover:text-white">
+          <X className="w-7 h-7" />
+        </button>
+        <span className="text-sm text-white/60">
+          {index + 1} / {photos.length}
+        </span>
+        <div className="w-7" />
+      </div>
+
+      {/* Photo */}
+      <div
+        className="flex-1 flex items-center justify-center overflow-hidden px-2"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <img
+          src={imgSrc}
+          alt=""
+          className="max-w-full max-h-full object-contain"
+          draggable={false}
+        />
+      </div>
+
+      {/* Bottom action */}
+      <div
+        className="shrink-0 flex justify-center pt-3"
+        style={{
+          paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
+        }}
+      >
+        {isUploading ? (
+          <div className="flex items-center gap-2 text-white/70 text-sm">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            Uploading...
+          </div>
+        ) : isSelected ? (
+          <div className="flex items-center gap-2 text-orange-400 text-sm">
+            <div className="w-5 h-5 rounded-full bg-orange-600 flex items-center justify-center">
+              <svg
+                className="w-3 h-3 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={3}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            </div>
+            Uploaded
+          </div>
+        ) : atMax ? (
+          <span className="text-sm text-white/40">Max 3 photos reached</span>
+        ) : (
+          <button
+            onClick={() => onSelect(photo.id)}
+            className="flex items-center gap-2 bg-orange-600 text-white px-6 py-2.5 rounded-full text-sm font-medium active:bg-orange-700"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            Upload This Photo
+          </button>
+        )}
+      </div>
     </div>,
     document.body,
   );
