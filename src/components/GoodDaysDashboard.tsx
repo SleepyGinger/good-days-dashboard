@@ -597,8 +597,6 @@ export default function GoodDaysDashboard() {
   const [dayPhotos, setDayPhotos] = useState<PhotoDayPhoto[]>([]);
   const [dayPhotosLoading, setDayPhotosLoading] = useState(false);
   const [dayPhotosPermission, setDayPhotosPermission] = useState<string>("prompt");
-  const [selectedDayPhotoIds, setSelectedDayPhotoIds] = useState<Set<string>>(new Set());
-  const [uploadingDayPhotoIds, setUploadingDayPhotoIds] = useState<Set<string>>(new Set());
   const [dayPhotoGalleryIndex, setDayPhotoGalleryIndex] = useState<number | null>(null);
 
   // Set initial entryDate on client only to avoid hydration mismatch
@@ -687,36 +685,28 @@ export default function GoodDaysDashboard() {
     }
   };
 
-  const handleDayPhotoSelect = async (photoId: string) => {
-    if (!user || photoUrls.length >= 3) return;
-    if (selectedDayPhotoIds.has(photoId)) return;
-
-    setSelectedDayPhotoIds((prev) => new Set(prev).add(photoId));
-    setUploadingDayPhotoIds((prev) => new Set(prev).add(photoId));
+  const handleGalleryConfirm = async (photoIds: string[]) => {
+    if (!user || photoIds.length === 0) return;
+    setDayPhotoGalleryIndex(null);
+    setPhotoLoading(true);
     try {
-      const { filePath } = await PhotoDay.getFullPhoto({ id: photoId });
-
-      // Fetch the temp file and wrap as a File object
-      const response = await fetch(Capacitor.convertFileSrc(filePath));
-      const blob = await response.blob();
-      const file = new File([blob], `day-photo-${Date.now()}.jpg`, { type: "image/jpeg" });
-
+      const remaining = 3 - photoUrls.length;
+      const toUpload = photoIds.slice(0, remaining);
       const dateKey = isoToKey(entryDate);
-      const url = await uploadPhotoFile(file, user.uid, dateKey, restAuthToken);
-      setPhotoUrls((prev) => (prev.length < 3 ? [...prev, url] : prev));
+      const urls: string[] = [];
+      for (const id of toUpload) {
+        const { filePath } = await PhotoDay.getFullPhoto({ id });
+        const response = await fetch(Capacitor.convertFileSrc(filePath));
+        const blob = await response.blob();
+        const file = new File([blob], `day-photo-${Date.now()}.jpg`, { type: "image/jpeg" });
+        const url = await uploadPhotoFile(file, user.uid, dateKey, restAuthToken);
+        urls.push(url);
+      }
+      setPhotoUrls((prev) => [...prev, ...urls].slice(0, 3));
     } catch (err) {
-      console.error("Day photo select error:", err);
-      setSelectedDayPhotoIds((prev) => {
-        const next = new Set(prev);
-        next.delete(photoId);
-        return next;
-      });
+      console.error("Gallery upload error:", err);
     } finally {
-      setUploadingDayPhotoIds((prev) => {
-        const next = new Set(prev);
-        next.delete(photoId);
-        return next;
-      });
+      setPhotoLoading(false);
     }
   };
 
@@ -730,8 +720,6 @@ export default function GoodDaysDashboard() {
     setPhotoUrls([]);
     setEntryDate(isoLocal());
     setDayPhotos([]);
-    setSelectedDayPhotoIds(new Set());
-    setUploadingDayPhotoIds(new Set());
     setDayPhotoGalleryIndex(null);
   };
 
@@ -1175,38 +1163,20 @@ Respond in JSON format only:
                     <p className="mt-2 text-sm text-stone-500">No photos found for this date.</p>
                   ) : (
                     <div className="grid grid-cols-4 gap-1.5 mt-2 max-h-48 overflow-y-auto">
-                      {dayPhotos.map((photo, idx) => {
-                        const isSelected = selectedDayPhotoIds.has(photo.id);
-                        const isUploading = uploadingDayPhotoIds.has(photo.id);
-                        return (
-                          <button
-                            key={photo.id}
-                            type="button"
-                            onClick={() => setDayPhotoGalleryIndex(idx)}
-                            className="relative aspect-square rounded-lg overflow-hidden"
-                          >
-                            <img
-                              src={Capacitor.convertFileSrc(photo.thumbnailPath)}
-                              alt=""
-                              className="w-full h-full object-cover"
-                            />
-                            {isUploading && (
-                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                                <Loader2 className="w-5 h-5 animate-spin text-white" />
-                              </div>
-                            )}
-                            {isSelected && !isUploading && (
-                              <div className="absolute inset-0 bg-orange-700/40 flex items-center justify-center">
-                                <div className="w-6 h-6 rounded-full bg-orange-600 flex items-center justify-center">
-                                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                  </svg>
-                                </div>
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
+                      {dayPhotos.map((photo, idx) => (
+                        <button
+                          key={photo.id}
+                          type="button"
+                          onClick={() => setDayPhotoGalleryIndex(idx)}
+                          className="relative aspect-square rounded-lg overflow-hidden"
+                        >
+                          <img
+                            src={Capacitor.convertFileSrc(photo.thumbnailPath)}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1382,10 +1352,8 @@ Respond in JSON format only:
         <DayPhotoGallery
           photos={dayPhotos}
           initialIndex={dayPhotoGalleryIndex}
-          selectedIds={selectedDayPhotoIds}
-          uploadingIds={uploadingDayPhotoIds}
-          photoCount={photoUrls.length}
-          onSelect={handleDayPhotoSelect}
+          maxSelectable={3 - photoUrls.length}
+          onConfirm={handleGalleryConfirm}
           onClose={() => setDayPhotoGalleryIndex(null)}
         />
       )}
@@ -1712,31 +1680,43 @@ function PhotoLightbox({ src, onClose }: { src: string; onClose: () => void }) {
 
 /* ───────────────────────────────────────────────────────────── */
 /* DayPhotoGallery – swipeable full-screen picker for device photos */
+/* Browse photos, select with checkmarks, then batch upload.     */
 /* ───────────────────────────────────────────────────────────── */
 function DayPhotoGallery({
   photos,
   initialIndex,
-  selectedIds,
-  uploadingIds,
-  photoCount,
-  onSelect,
+  maxSelectable,
+  onConfirm,
   onClose,
 }: {
   photos: PhotoDayPhoto[];
   initialIndex: number;
-  selectedIds: Set<string>;
-  uploadingIds: Set<string>;
-  photoCount: number;
-  onSelect: (photoId: string) => void;
+  maxSelectable: number;
+  onConfirm: (photoIds: string[]) => void;
   onClose: () => void;
 }) {
   const [index, setIndex] = useState(initialIndex);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [fullUrls, setFullUrls] = useState<Record<string, string>>({});
   const loadingRef = useRef<Set<string>>(new Set());
   const lastTapRef = useRef(0);
   const swipeRef = useRef<{ startX: number; moved: boolean } | null>(null);
 
   const photo = photos[index];
+  const isSelected = selected.has(photo.id);
+  const atMax = selected.size >= maxSelectable;
+
+  const toggleSelect = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(photo.id)) {
+        next.delete(photo.id);
+      } else if (next.size < maxSelectable) {
+        next.add(photo.id);
+      }
+      return next;
+    });
+  };
 
   // Load full-size photo for current and adjacent indices
   useEffect(() => {
@@ -1783,12 +1763,10 @@ function DayPhotoGallery({
       if (diff > 0 && index < photos.length - 1) setIndex((i) => i + 1);
       else if (diff < 0 && index > 0) setIndex((i) => i - 1);
     } else if (!wasMoved) {
-      // Tap — check for double-tap
+      // Tap — check for double-tap to toggle selection
       const now = Date.now();
       if (now - lastTapRef.current < 300) {
-        if (!selectedIds.has(photo.id) && photoCount < 3) {
-          onSelect(photo.id);
-        }
+        toggleSelect();
         lastTapRef.current = 0;
       } else {
         lastTapRef.current = now;
@@ -1797,9 +1775,6 @@ function DayPhotoGallery({
   };
 
   const imgSrc = fullUrls[photo.id] || Capacitor.convertFileSrc(photo.thumbnailPath);
-  const isSelected = selectedIds.has(photo.id);
-  const isUploading = uploadingIds.has(photo.id);
-  const atMax = photoCount >= 3;
 
   return createPortal(
     <div
@@ -1822,7 +1797,7 @@ function DayPhotoGallery({
 
       {/* Photo */}
       <div
-        className="flex-1 flex items-center justify-center overflow-hidden px-2"
+        className="flex-1 relative flex items-center justify-center overflow-hidden px-2"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -1833,60 +1808,59 @@ function DayPhotoGallery({
           className="max-w-full max-h-full object-contain"
           draggable={false}
         />
+        {/* Selection checkmark overlay */}
+        {isSelected && (
+          <div className="absolute top-3 right-5 w-8 h-8 rounded-full bg-orange-600 flex items-center justify-center">
+            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        )}
       </div>
 
-      {/* Bottom action */}
+      {/* Bottom actions */}
       <div
-        className="shrink-0 flex justify-center pt-3"
+        className="shrink-0 flex flex-col items-center gap-3 pt-3 px-6"
         style={{
           paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
         }}
       >
-        {isUploading ? (
-          <div className="flex items-center gap-2 text-white/70 text-sm">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            Uploading...
-          </div>
-        ) : isSelected ? (
-          <div className="flex items-center gap-2 text-orange-400 text-sm">
-            <div className="w-5 h-5 rounded-full bg-orange-600 flex items-center justify-center">
-              <svg
-                className="w-3 h-3 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={3}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M5 13l4 4L19 7"
-                />
+        {/* Select / deselect button */}
+        <button
+          onClick={toggleSelect}
+          disabled={!isSelected && atMax}
+          className={`flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium ${
+            isSelected
+              ? "bg-orange-600 text-white active:bg-orange-700"
+              : atMax
+                ? "bg-stone-800 text-stone-500"
+                : "bg-stone-800 text-white active:bg-stone-700"
+          }`}
+        >
+          {isSelected ? (
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
-            </div>
-            Uploaded
-          </div>
-        ) : atMax ? (
-          <span className="text-sm text-white/40">Max 3 photos reached</span>
-        ) : (
+              Selected
+            </>
+          ) : atMax ? (
+            `Max ${maxSelectable} selected`
+          ) : (
+            <>
+              <div className="w-4 h-4 rounded-full border-2 border-white/60" />
+              Select
+            </>
+          )}
+        </button>
+
+        {/* Upload button — only when there are selections */}
+        {selected.size > 0 && (
           <button
-            onClick={() => onSelect(photo.id)}
-            className="flex items-center gap-2 bg-orange-600 text-white px-6 py-2.5 rounded-full text-sm font-medium active:bg-orange-700"
+            onClick={() => onConfirm(Array.from(selected))}
+            className="w-full bg-orange-600 text-white py-3 rounded-xl text-sm font-semibold active:bg-orange-700"
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-            Upload This Photo
+            Upload {selected.size} Photo{selected.size > 1 ? "s" : ""}
           </button>
         )}
       </div>
