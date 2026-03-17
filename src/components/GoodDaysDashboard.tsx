@@ -1109,7 +1109,7 @@ Respond in JSON format only:
         </section>
 
         {/* New Entry Drawer */}
-        <Drawer open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) setShowDatePicker(false); }}>
+        <Drawer open={addOpen} onOpenChange={(open) => { if (!open && dayPhotoGalleryIndex !== null) return; setAddOpen(open); if (!open) setShowDatePicker(false); }}>
           <DrawerContent>
             <DrawerHeader>
               <DrawerTitle>New Entry</DrawerTitle>
@@ -1746,8 +1746,10 @@ function DayPhotoGallery({
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (swipeRef.current && e.touches.length === 1) {
-      if (Math.abs(e.touches[0].clientX - swipeRef.current.startX) > 10) {
+      const dx = Math.abs(e.touches[0].clientX - swipeRef.current.startX);
+      if (dx > 10) {
         swipeRef.current.moved = true;
+        e.preventDefault(); // prevent iOS back-swipe / scroll
       }
     }
   };
@@ -1798,6 +1800,7 @@ function DayPhotoGallery({
       {/* Photo */}
       <div
         className="flex-1 relative flex items-center justify-center overflow-hidden px-2"
+        style={{ touchAction: "none" }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
