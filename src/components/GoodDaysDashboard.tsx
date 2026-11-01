@@ -598,6 +598,7 @@ export default function GoodDaysDashboard() {
   const [dayPhotosLoading, setDayPhotosLoading] = useState(false);
   const [dayPhotosPermission, setDayPhotosPermission] = useState<string>("prompt");
   const [dayPhotoGalleryIndex, setDayPhotoGalleryIndex] = useState<number | null>(null);
+  const [showDayPhotos, setShowDayPhotos] = useState(true);
 
   // Set initial entryDate on client only to avoid hydration mismatch
   useEffect(() => {
@@ -703,6 +704,7 @@ export default function GoodDaysDashboard() {
         urls.push(url);
       }
       setPhotoUrls((prev) => [...prev, ...urls].slice(0, 3));
+      setShowDayPhotos(false);
     } catch (err) {
       console.error("Gallery upload error:", err);
     } finally {
@@ -721,6 +723,7 @@ export default function GoodDaysDashboard() {
     setEntryDate(isoLocal());
     setDayPhotos([]);
     setDayPhotoGalleryIndex(null);
+    setShowDayPhotos(true);
   };
 
   // Dev shortcut: press 'c' to preview celebration
@@ -1146,38 +1149,51 @@ Respond in JSON format only:
                 )}
               </div>
 
-              {/* Photos from this Day (iOS only, hidden when entry already has photos) */}
-              {isCapacitorEnv && photoUrls.length === 0 && (
+              {/* Photos from this Day (iOS only) */}
+              {isCapacitorEnv && (
                 <div>
-                  <label className="text-sm opacity-70">Photos from this Day</label>
-                  {dayPhotosLoading ? (
-                    <div className="flex items-center gap-2 mt-2 text-sm text-stone-400">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Loading photos...</span>
-                    </div>
-                  ) : dayPhotosPermission === "denied" ? (
-                    <p className="mt-2 text-sm text-stone-500">
-                      Photo access denied. Enable in Settings &gt; Good Days &gt; Photos.
-                    </p>
-                  ) : dayPhotos.length === 0 ? (
-                    <p className="mt-2 text-sm text-stone-500">No photos found for this date.</p>
+                  {photoUrls.length > 0 && !showDayPhotos ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowDayPhotos(true)}
+                      className="flex items-center gap-2 text-sm text-orange-400 hover:text-orange-300"
+                    >
+                      <ImagePlus className="w-4 h-4" />
+                      Browse device photos
+                    </button>
                   ) : (
-                    <div className="grid grid-cols-4 gap-1.5 mt-2 max-h-48 overflow-y-auto">
-                      {dayPhotos.map((photo, idx) => (
-                        <button
-                          key={photo.id}
-                          type="button"
-                          onClick={() => setDayPhotoGalleryIndex(idx)}
-                          className="relative aspect-square rounded-lg overflow-hidden"
-                        >
-                          <img
-                            src={Capacitor.convertFileSrc(photo.thumbnailPath)}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        </button>
-                      ))}
-                    </div>
+                    <>
+                      <label className="text-sm opacity-70">Photos from this Day</label>
+                      {dayPhotosLoading ? (
+                        <div className="flex items-center gap-2 mt-2 text-sm text-stone-400">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Loading photos...</span>
+                        </div>
+                      ) : dayPhotosPermission === "denied" ? (
+                        <p className="mt-2 text-sm text-stone-500">
+                          Photo access denied. Enable in Settings &gt; Good Days &gt; Photos.
+                        </p>
+                      ) : dayPhotos.length === 0 ? (
+                        <p className="mt-2 text-sm text-stone-500">No photos found for this date.</p>
+                      ) : (
+                        <div className="grid grid-cols-4 gap-1.5 mt-2 max-h-48 overflow-y-auto">
+                          {dayPhotos.map((photo, idx) => (
+                            <button
+                              key={photo.id}
+                              type="button"
+                              onClick={() => setDayPhotoGalleryIndex(idx)}
+                              className="relative aspect-square rounded-lg overflow-hidden"
+                            >
+                              <img
+                                src={Capacitor.convertFileSrc(photo.thumbnailPath)}
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -1739,12 +1755,14 @@ function DayPhotoGallery({
   }, [index, photos]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation(); // prevent Vaul drawer from capturing touch
     if (e.touches.length === 1) {
       swipeRef.current = { startX: e.touches[0].clientX, moved: false };
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    e.stopPropagation(); // prevent Vaul drawer from capturing touch
     if (swipeRef.current && e.touches.length === 1) {
       const dx = Math.abs(e.touches[0].clientX - swipeRef.current.startX);
       if (dx > 10) {
@@ -1755,6 +1773,7 @@ function DayPhotoGallery({
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    e.stopPropagation(); // prevent Vaul drawer from capturing touch
     if (!swipeRef.current) return;
     const endX = e.changedTouches[0].clientX;
     const diff = swipeRef.current.startX - endX;
