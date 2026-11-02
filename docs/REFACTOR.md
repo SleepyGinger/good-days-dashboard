@@ -1,6 +1,6 @@
 # Good Days refactor and release guide
 
-Prepared November 1, 2026 on `codex/good-days-refactor`. The branch has been pushed and [draft PR #4](https://github.com/SleepyGinger/good-days-dashboard/pull/4) is open for review. Local integration results are recorded below. This document describes the implementation and the release work that remains; it does not record a production deployment.
+Prepared November 1, 2026 on `codex/good-days-refactor`, reviewed in [PR #4](https://github.com/SleepyGinger/good-days-dashboard/pull/4). Website publication is approved, with protected analysis restricted to the existing iPhone sign-in account. Local integration results and remaining native release requirements are recorded below; production completion needs live deployment evidence.
 
 ## Scope and intent
 
@@ -87,7 +87,7 @@ npm run build:ios
 npm run cap:sync
 ```
 
-`check` includes app/API TypeScript, lint, and mocked tests. Tests cover date/record contracts, shared initialization, native token renewal/logout races, polling cleanup, network timeouts, photo upload coordination, and sentiment authorization/validation. Tests do not use production credentials or send journal notes to a model.
+`check` includes app/API TypeScript, lint, mocked tests, and `test:api-runtime`. The runtime check compiles the standalone API with its actual package metadata and checks emitted JavaScript over a temporary loopback HTTP server. API NodeNext resolution, explicit ESM package type, and `.js` relative imports match the deployed Node.js 22.x runtime; bundler-only resolution previously hid a production startup failure. Tests cover date/record contracts, shared initialization, native token renewal/logout races, polling cleanup, network timeouts, photo upload coordination, and sentiment authorization/validation. Tests do not use production credentials or send journal notes to a model.
 
 Each export writes `out/`; run the appropriate build immediately before using its output. A browser preview can use:
 

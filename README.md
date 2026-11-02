@@ -28,12 +28,13 @@ npm test
 npm run typecheck
 npm run lint
 npm run check
+npm run test:api-runtime
 npm run build
 npm run build:ios
 npm run cap:sync
 ```
 
-`check` runs TypeScript for the app and API, ESLint, and the mocked test suite. Both builds write `out/`; `cap:sync` copies the current export to iOS. To preview the web export in a browser:
+`check` runs TypeScript for the app and API, ESLint, the mocked test suite, and a compiled API runtime smoke check. The standalone API uses explicit ESM metadata and Node.js 22.x. Both builds write `out/`; `cap:sync` copies the current export to iOS. To preview the web export in a browser:
 
 ```bash
 python3 -m http.server 4173 --bind 127.0.0.1 --directory out
@@ -51,9 +52,9 @@ See [CLAUDE.md](CLAUDE.md) for the module map, [current review findings](docs/re
 
 ## Release status
 
-The refactor branch has been pushed and [draft PR #4](https://github.com/SleepyGinger/good-days-dashboard/pull/4) is open for review. Pushing the branch or opening a PR does not publish the app. The GitHub Pages workflow deploys pushes to `main`; the Vercel API and iOS app have separate release steps. Configure and validate the protected API before releasing clients that depend on it. Existing installed builds must transition away from embedded credentials and the retired model, followed by credential rotation.
+The refactor is reviewed in [PR #4](https://github.com/SleepyGinger/good-days-dashboard/pull/4). The website release is approved, with protected analysis restricted to the existing iPhone sign-in account. Publish the protected Vercel API and verify a synthetic authenticated analysis before merging to `main`; GitHub Pages then publishes the website after its checks pass. The iOS app has a separate release process. Existing installed builds must transition away from embedded credentials and the retired model, followed by credential rotation.
 
-Local integration checks passed: 49 regression tests, app/API TypeScript, ESLint, web/iOS static exports, Capacitor sync, unsigned and ad-hoc simulator builds with Xcode 26.5, and eight mocked browser workflow groups including the footer-error visibility check. Updated screenshots were visually reviewed. The ad-hoc simulator build launched the native email/password screen and read an empty Keychain session without an error. Production dependency audit: zero reported vulnerabilities; 17 moderate development/tooling advisories remain.
+Local integration checks passed: 51 regression tests, app/API TypeScript, ESLint, compiled API runtime checks, web/iOS static exports, Capacitor sync, unsigned and ad-hoc simulator builds with Xcode 26.5, and eight mocked browser workflow groups including the footer-error visibility check. Updated screenshots were visually reviewed. The ad-hoc simulator build launched the native email/password screen and read an empty Keychain session without an error. Hosted app/browser/security and native compile jobs passed at `dc1be24`. Production dependency audit: zero reported vulnerabilities; 17 moderate development/tooling advisories remain.
 
 The three previously configured private values were absent from 46 generated web/native JavaScript files checked without printing those values. Real sign-in, Keychain token writes/restoration/deletion, real photo-library flows, live API/Firebase rules, credential rotation, and TestFlight/production releases still need the release checks in the guide.
 

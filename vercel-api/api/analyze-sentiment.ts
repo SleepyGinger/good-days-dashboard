@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createSentimentService } from "../lib/sentiment-service";
+import { createSentimentService } from "../lib/sentiment-service.js";
 
 const handleSentiment = createSentimentService();
 

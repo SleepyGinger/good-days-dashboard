@@ -5,7 +5,7 @@ import {
   SENTIMENT_LIMITS,
   type SentimentNote,
   type SentimentResult,
-} from "./sentiment-contract";
+} from "./sentiment-contract.js";
 
 // Active economical text model, verified 2026-11-01:
 // https://platform.claude.com/docs/en/models/haiku-5-5/overview

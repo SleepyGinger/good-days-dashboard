@@ -14,6 +14,7 @@ npm test            # Node test runner via tsx; mocked providers and pure logic
 npm run typecheck   # App and standalone API TypeScript
 npm run lint        # src, tests, scripts, and API
 npm run check       # TypeScript + lint + tests
+npm run test:api-runtime # Compiled standalone API and loopback HTTP smoke checks
 npm run test:browser # Local fixture smoke checks; serve out/ on port 4173 first
 npm run build       # Static web export to out/
 npm run build:ios   # Export for native assets to out/

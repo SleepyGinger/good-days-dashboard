@@ -2,7 +2,8 @@
   "name": "good-days-api",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": { "typecheck": "tsc --noEmit" },
-  "engines": { "node": ">=22" },
+  "engines": { "node": "22.x" },
   "devDependencies": { "@types/node": "^22", "typescript": "^5" }
 }
