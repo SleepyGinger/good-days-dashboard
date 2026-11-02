@@ -27,10 +27,10 @@ The existing Firebase schema, household sharing, legacy photos, and static hosti
 
 ## Verification
 
-Local integration verification passed 49 regression tests, app/API TypeScript, ESLint, both static exports, Capacitor sync, unsigned Xcode 26.5 simulator compilation, and eight browser workflow groups using mocked providers. Screenshots were visually reviewed. The final footer/error-viewport recheck and native launch smoke check are still in progress.
+Local integration verification passed 49 regression tests, app/API TypeScript, ESLint, both static exports, Capacitor sync, unsigned and normal ad-hoc Xcode 26.5 simulator builds, and eight mocked browser workflow groups including footer-error visibility. Updated screenshots were visually reviewed. The ad-hoc simulator build launched the native email/password screen, and its Session bridge performed an empty-session Keychain read without an error. The test app was then removed and simulator shut down.
 
 The production dependency audit reports zero vulnerabilities. Seventeen moderate development/tooling advisories remain after compatible patches; no forced major upgrades were applied. A boolean-only scan found none of the three previously configured private values in 46 generated web/native JavaScript files.
 
 The iOS scheme is now explicitly `capacitor`. Installed Capacitor 8 source already normalizes the prior unsupported `https` setting to that default, so this makes the normalized origin explicit. The API permits `capacitor://localhost` and retains `https://localhost` compatibility.
 
-CI includes unsigned native compilation alongside app/API checks, exports, and mocked browser smoke checks. Local results do not establish successful production deployment, credential rotation, live rule enforcement, or real-device operation. See the [release guide](REFACTOR.md) for commands, rollout order, and the remaining acceptance checks.
+CI includes unsigned native compilation alongside app/API checks, exports, and mocked browser smoke checks. The branch has been pushed; a draft PR is pending. Local results do not establish real sign-in, Keychain token write/restore/delete behavior, real photo-library workflows, live API/rule enforcement, credential rotation, TestFlight distribution, or production deployment. See the [release guide](REFACTOR.md) for commands, rollout order, and the remaining acceptance checks.

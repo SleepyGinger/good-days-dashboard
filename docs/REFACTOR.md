@@ -1,6 +1,6 @@
 # Good Days refactor and release guide
 
-Prepared November 1, 2026 on `codex/good-days-refactor`. Local integration results are recorded below; final footer/error-viewport and native launch smoke checks are in progress. This document describes the implementation and the release work that remains; it does not record a production deployment.
+Prepared November 1, 2026 on `codex/good-days-refactor`. The branch has been pushed; a draft PR is pending. Local integration results are recorded below. This document describes the implementation and the release work that remains; it does not record a production deployment.
 
 ## Scope and intent
 
@@ -151,12 +151,14 @@ Observed locally during integration on November 1, 2026:
 | Node regression tests | 49 passed. Provider/auth/native calls are mocked; pure lifecycle and record/date behavior are exercised. |
 | App/API TypeScript and ESLint | Passed cleanly. |
 | Web export, iOS export, Capacitor sync | Passed. |
-| Native simulator compilation | Succeeded unsigned with Xcode 26.5 and the `netrc` package authorization flag. |
-| Browser workflows | Eight groups passed with isolated synthetic provider/native fixtures. Screenshots were visually reviewed. The final footer/error-viewport fix is being rechecked. |
-| Native launch smoke | In progress; compilation success alone does not establish launch/runtime behavior. |
+| Native simulator compilation | Unsigned and normal ad-hoc simulator builds succeeded with Xcode 26.5. The public-package download check used the `netrc` authorization flag. |
+| Browser workflows | Eight groups passed with isolated synthetic provider/native fixtures, including the footer-error viewport assertion. Updated screenshots were visually reviewed. |
+| Native launch smoke | The normal ad-hoc simulator build launched the actual native email/password UI. The Session bridge executed `SecItemCopyMatching` for an empty saved session without a Keychain error. The test app was removed and simulator shut down afterward. |
 | Production dependency audit | Zero reported vulnerabilities after compatible dependency patches. |
 | Development/tooling dependency audit | 17 moderate advisories remain. No forced major upgrades were applied. |
 | Known credential values in generated assets | None of the three previously configured private values were found in 46 generated web/native JavaScript files. This used boolean-only comparisons without printing the values. |
 | Hosted CI | App/API/browser and unsigned native compile jobs are configured; a remote run has not been established by these local results. |
 
-Not yet established by this document: a production web/API/iOS deployment; live Firebase rule enforcement; credential rotation or session revocation; authenticated production analysis; real-device Keychain, renewal, permissions, photo upload, and recovery behavior.
+The launch check covers startup and reading an empty Keychain session. It does not exercise real credentials, a successful sign-in, refresh-token writes/restoration/deletion, or the actual photo-library bridge workflow. The temporary simulator app has been removed.
+
+Not yet established by this document: a hosted CI outcome; draft PR creation; a production web/API/iOS deployment or TestFlight distribution; live Firebase rule enforcement; credential rotation or session revocation; authenticated production analysis; real-device Keychain, renewal, permissions, photo upload, and recovery behavior.

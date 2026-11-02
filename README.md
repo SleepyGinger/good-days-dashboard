@@ -51,10 +51,10 @@ See [CLAUDE.md](CLAUDE.md) for the module map, [current review findings](docs/re
 
 ## Release status
 
-This refactor is prepared on a branch for review. Pushing the branch or opening a PR does not publish it. The GitHub Pages workflow deploys pushes to `main`; the Vercel API and iOS app have separate release steps. Configure and validate the protected API before releasing clients that depend on it. Existing installed builds must transition away from embedded credentials and the retired model, followed by credential rotation.
+The refactor branch has been pushed; a draft PR is pending. Pushing the branch or opening a PR does not publish the app. The GitHub Pages workflow deploys pushes to `main`; the Vercel API and iOS app have separate release steps. Configure and validate the protected API before releasing clients that depend on it. Existing installed builds must transition away from embedded credentials and the retired model, followed by credential rotation.
 
-Local integration checks passed: 49 regression tests, app/API TypeScript, ESLint, web/iOS static exports, Capacitor sync, an unsigned Xcode 26.5 simulator compile, and eight browser workflow groups with mocked providers and reviewed screenshots. The final footer/error-viewport recheck and native launch smoke check are in progress. Production dependency audit: zero reported vulnerabilities; 17 moderate development/tooling advisories remain.
+Local integration checks passed: 49 regression tests, app/API TypeScript, ESLint, web/iOS static exports, Capacitor sync, unsigned and ad-hoc simulator builds with Xcode 26.5, and eight mocked browser workflow groups including the footer-error visibility check. Updated screenshots were visually reviewed. The ad-hoc simulator build launched the native email/password screen and read an empty Keychain session without an error. Production dependency audit: zero reported vulnerabilities; 17 moderate development/tooling advisories remain.
 
-The three previously configured private values were absent from 46 generated web/native JavaScript files checked without printing those values. Real-iPhone behavior, live API authentication/Firebase rules, credential rotation, and production releases still need the release checks in the guide.
+The three previously configured private values were absent from 46 generated web/native JavaScript files checked without printing those values. Real sign-in, Keychain token writes/restoration/deletion, real photo-library flows, live API/Firebase rules, credential rotation, and TestFlight/production releases still need the release checks in the guide.
 
 Private project.
