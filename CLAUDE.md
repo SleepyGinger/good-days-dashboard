@@ -1,54 +1,72 @@
-# CLAUDE.md
+# Working on Good Days
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Read this file, [README.md](README.md), [docs/REFACTOR.md](docs/REFACTOR.md), and the relevant module before changing behavior. Most use is on an iPhone. Preserve the phone workflow and verify native behavior separately from browser behavior.
 
-## Build Commands
+## Commands
+
+Use Node.js 22 or later (`.nvmrc`) and the lockfiles in the repository root and `vercel-api/`.
 
 ```bash
-npm run dev      # Start dev server on port 3000 (includes localStorage polyfill for Node.js 25+)
-npm run build    # Static export build (outputs to ./out)
-npm run deploy   # Build + git push (triggers GitHub Pages deploy)
+npm ci
+npm ci --prefix vercel-api
+npm run dev         # Next dev server, port 3000
+npm test            # Node test runner via tsx; mocked providers and pure logic
+npm run typecheck   # App and standalone API TypeScript
+npm run lint        # src, tests, scripts, and API
+npm run check       # TypeScript + lint + tests
+npm run test:browser # Local fixture smoke checks; serve out/ on port 4173 first
+npm run build       # Static web export to out/
+npm run build:ios   # Export for native assets to out/
+npm run cap:sync    # Copy current out/ assets and synchronize iOS plugins
 ```
 
-Note: No test suite is currently configured.
+There is one `next.config.js`. Both deployment targets use root-relative assets, trailing slashes, and unoptimized remote images. Next.js and `eslint-config-next` are pinned together at 15.5.28. Build lint/type failures are not bypassed. The old Node localStorage polyfills and duplicate config have been removed.
 
-## Architecture Overview
+Keep iOS `iosScheme: "capacitor"`. Capacitor 8 normalizes unsupported `http`/`https` schemes to this default; making it explicit preserves the normalized native origin. Keychain/REST handles native sessions without a WebView auth-persistence scheme workaround.
 
-**Good Days Dashboard** is a Next.js 15 mood tracking app with Firebase backend and localStorage fallback.
+`npm run deploy` performs checks/build and pushes Git. `npm run deploy:ios` also synchronizes native assets and creates/exports a signed archive. These are release operations; use the individual check/build commands during implementation. The Pages workflow deploys `main`. Keep a refactor on its branch/PR until the concrete release steps in the guide are ready.
 
-### Tech Stack
-- **Framework**: Next.js 15 (App Router, static export)
-- **UI**: React 19, Tailwind CSS v4, shadcn/ui (New York style), Framer Motion
-- **Backend**: Firebase Realtime Database with localStorage fallback
-- **AI**: Anthropic SDK for Claude-powered sentiment analysis
+## Module map
 
-### Key Files
-- `src/components/GoodDaysDashboard.tsx` - Main monolithic component (~1000 lines) containing Firebase init, data hooks, calendar UI, and all CRUD logic
-- `src/app/api/analyze-sentiment/route.ts` - Claude API endpoint for monthly mood analysis
-- `src/components/Celebration.tsx` - Post-save animation component
-- `src/components/ThemeDrawer.tsx` - Theme (date ranges) management drawer
+| Area | Files |
+| --- | --- |
+| Routes and static shell | `src/app/page.tsx`, `src/app/dashboard/page.tsx`, `src/app/layout.tsx` |
+| Dashboard composition | `src/components/GoodDaysDashboard.tsx` |
+| Entry and calendar UI | `EntryEditor.tsx`, `EntryViewer.tsx`, `MoodCalendar.tsx`, `ThemeDrawer.tsx` |
+| Photo presentation | `src/components/photos/DayPhotoGallery.tsx`, `PhotoLightbox.tsx` |
+| Data hooks | `src/hooks/useEntries.ts`, `useThemes.ts` |
+| Photo lifecycle | `src/hooks/useDayPhotos.ts`, `useEntryPhotos.ts`, `src/lib/photoUploadCoordinator.ts` |
+| Shared types and dates | `src/lib/domain.ts`, `src/lib/dates.ts` |
+| Firebase initialization | `src/lib/firebaseClient.ts`, `sharedInitialization.ts` |
+| Authentication | `src/lib/authService.ts`, `nativeSession.ts`, `nativeSessionPlugin.ts` |
+| Persistence and validation | `src/lib/dataService.ts`, `cloudDataClient.ts`, `dataRecords.ts`, `dataSubscriptions.ts`, `network.ts` |
+| Photo upload and native API | `src/lib/photoStorageService.ts`, `photoDayPlugin.ts` |
+| Sentiment | `src/components/SentimentSummary.tsx`, `src/lib/sentiment-client.ts`, `vercel-api/lib/` |
+| Native bridges | `ios/App/App/PhotoDayPlugin.swift`, `SessionPlugin.swift`, `ViewController.swift` |
 
-### Data Flow
-The app uses three custom hooks in GoodDaysDashboard.tsx:
-- `useAuth()` - Firebase Auth with Google sign-in
-- `useEntries()` - Subscribes to mood entries, groups by date
-- `useThemes()` - Subscribes to lifecycle themes (date ranges)
+## Invariants
 
-Firebase paths are root-level: `moodData/{YYYYMMDD}` and `themes/{id}`.
+- Keep shared Firebase roots `moodData/{YYYYMMDD}`, `themes/{id}`, and `sentimentData/{key}`. `last60` remains the recent-analysis key. User IDs authenticate requests and scope photo paths; they do not migrate the shared journal into user-specific roots.
+- Preserve entry day/energy/touch values and legacy `photoUrl` alongside `photoUrls[]` compatibility. Use `getEntryPhotos()` to read photos.
+- Treat ISO journal dates as local calendar days. Use `isoLocal`, `isoToKey`, and `isoToLocalDate`; avoid UTC conversion for local-day keys.
+- Surface failed cloud reads/writes. Keep the draft after a failed save and celebrate only after successful persistence. Do not restore silent localStorage fallback or erase old localStorage records; recovery is a separate manual operation.
+- Browser auth uses Firebase's Google sign-in and shared initialization. Native auth uses user-entered Firebase email/password, refreshes expiring tokens, and stores only the refresh token in Keychain. Logout invalidates in-flight renewal and clears Keychain. Keep async generation/cleanup guards.
+- Native collection reads poll without overlap; browser collection reads use Firebase listeners. Mutations on both platforms use bounded REST requests with a fresh token, avoiding an offline SDK write queue. Clean up subscriptions and discard stale results after auth, date, draft, or component changes.
+- Upload at most three photos, prevent save during pending uploads, and discard results belonging to an old draft. Preserve native permission states, pagination, and temporary-file cleanup.
+- The client sends a Firebase bearer token to the protected sentiment API. Keep one prompt/parser and server-only Anthropic credentials. Do not add a direct-browser Anthropic path or a POST route inside the static export.
 
-### Hydration Handling
-Home page uses dynamic import with `ssr: false` to prevent hydration mismatches. The `isBrowser()` helper guards window/localStorage access.
+## Configuration and release boundaries
 
-### Date Handling
-All dates use local timezone (not UTC). Key helpers:
-- `isoLocal(date)` - Returns "YYYY-MM-DD"
-- `isoToKey(iso)` - Returns "YYYYMMDD" for Firebase keys
+Public Firebase configuration and `NEXT_PUBLIC_SENTIMENT_API_URL` are build inputs. Delete deprecated `NEXT_PUBLIC_ANTHROPIC_API_KEY` and `NEXT_PUBLIC_IOS_AUTH_*` values from old `.env.local` files and build settings before builds. Never print credential values while diagnosing configuration. The build guard checks unsafe public variable names.
 
-## Deployment
+The standalone API needs `ANTHROPIC_API_KEY`, `FIREBASE_WEB_API_KEY`, and `GOOD_DAYS_ALLOWED_EMAILS`; optional origins/model settings are documented in [vercel-api/README.md](vercel-api/README.md). iOS uses `capacitor://localhost`; the API also permits `https://localhost` for Android/older clients. The email allowlist is required and fails closed. API authentication does not replace Firebase database/Storage rules. The default supported model is economical Haiku 5.5; check official lifecycle documentation before changing it.
 
-Static export to GitHub Pages with custom domain (gooddays.dansalazar.org). The workflow in `.github/workflows/deploy.yml` builds and deploys on push to main.
+Track intentional Xcode/Swift/configuration source. Ignore generated web assets under `ios/App/App/public`, dependency/build caches, archives, signing material, and `.env*` files. `cap sync` does not recreate custom Swift plugins from a clean project.
 
-## Environment Variables
+After replacing old installed clients, rotate the formerly embedded Anthropic credential and Firebase account password and revoke old sessions. Removing a value from source or a local env file does not remove it from an installed app. Do not claim rotation, production rule verification, deployment, or real-device behavior without current evidence.
 
-- `ANTHROPIC_API_KEY` - Required for sentiment analysis endpoint (in `.env.local`)
-- Firebase config is hardcoded (public keys)
+## Verification status
+
+Local integration checks passed: 49 tests, app/API TypeScript, ESLint, web/iOS exports, Capacitor sync, unsigned simulator compilation with Xcode 26.5, and eight mocked browser workflow groups with screenshot review. The final footer/error-viewport recheck and native launch smoke check are in progress. CI now includes an unsigned native compile job; a hosted CI run is separate evidence.
+
+Production dependency audit reports zero vulnerabilities; 17 moderate development/tooling advisories remain after compatible patches. Three known private configuration values were absent from 46 generated JavaScript files in a boolean-only scan. Record final recheck results in [docs/REFACTOR.md](docs/REFACTOR.md). Real-device auth/photos, live rules/API access, credential rotation, and production release remain unverified.

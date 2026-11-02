@@ -5,8 +5,8 @@ const config: CapacitorConfig = {
   appName: "Good Days",
   webDir: "out",
   server: {
-    // Use https scheme so Firebase Auth persistence works in the WebView
-    iosScheme: "https",
+    // WKWebView requires a custom scheme; native sessions use iOS Keychain.
+    iosScheme: "capacitor",
     androidScheme: "https",
   },
 };

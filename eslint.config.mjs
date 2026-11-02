@@ -10,6 +10,7 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+  { ignores: ["**/node_modules/**", ".next/**", "out/**", "ios/**", "vercel-api/.vercel/**"] },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
 ];
 

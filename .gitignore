@@ -41,9 +41,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# ios native build
-/ios/
+# Native source is versioned; generated bundles, caches and signing outputs are not.
+/ios/build/
+/ios/.build/
+*.xcarchive
+*.ipa
+*.mobileprovision
+*.p12
 
 # misc artifacts
 screenshot.png
 session-notes.md
+firebase-debug.log
