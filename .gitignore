@@ -53,3 +53,4 @@ next-env.d.ts
 screenshot.png
 session-notes.md
 firebase-debug.log
+/.claude/settings.local.json

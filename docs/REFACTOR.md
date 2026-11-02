@@ -161,4 +161,14 @@ Observed locally during integration on November 1, 2026:
 
 The launch check covers startup and reading an empty Keychain session. It does not exercise real credentials, a successful sign-in, refresh-token writes/restoration/deletion, or the actual photo-library bridge workflow. The temporary simulator app has been removed.
 
-Not yet established by this document: a hosted CI outcome; a production web/API/iOS deployment or TestFlight distribution; live Firebase rule enforcement; credential rotation or session revocation; authenticated production analysis; real-device Keychain, renewal, permissions, photo upload, and recovery behavior.
+The initial hosted app/browser and native jobs passed at commit `921bd9c`. A production web/API/iOS deployment or TestFlight distribution; live Firebase rule enforcement; credential rotation or session revocation; authenticated production analysis; and real-device Keychain, renewal, permissions, photo upload, and recovery behavior remain separate checks.
+
+## Pre-publication credential review
+
+The final security pass removes `.claude/settings.local.json` from tracking and ignores it. An existing uncommitted local permission rule contained a provider credential; that modification was never included in the branch or reachable Git history. Preserve local settings privately and never stage tool permission files containing shell commands or credentials.
+
+Capacitor bridge logging is explicitly disabled in every build because plugin results include Keychain refresh tokens. The analysis client requires HTTPS, rejects embedded URL credentials and redirects before transmitting a bearer token, and permits HTTP loopback only during local development. Two additional regression tests cover these transport restrictions (51 total tests).
+
+Gitleaks 8.30.1 scanned reachable history, the complete tracked source snapshot, and web/native export trees. Its only initial matches were the public Firebase web API key. `.gitleaks.toml` permits that exact public value; all other default rules remain enabled. CI verifies the pinned scanner archive checksum, scans Git history before building, and scans exported assets before publication. Scanner output must remain fully redacted.
+
+The prior live website's root HTML and 12 loaded JavaScript assets contained none of the three distinct previously configured private values and no private-credential patterns. Its separate `/dashboard/` route returned 404; authenticated pages, historical deployments, and installed iOS bundles were outside this live scan. This check does not establish rotation or erase credentials from old installed clients.

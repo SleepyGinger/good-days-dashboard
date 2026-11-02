@@ -182,6 +182,7 @@ test("client sends a fresh bearer token and accepts only a valid response", asyn
   assert.deepEqual(await analyze(notes), result);
   assert.equal(new Headers(received?.headers).get("Authorization"), "Bearer fresh-token");
   assert.equal(received?.credentials, "omit");
+  assert.equal(received?.redirect, "error");
   const invalid = createSentimentClient({ endpoint: "https://api.example/analyze", getToken: async () => "token", fetcher: async () => Response.json({ grade: "100", summary: "x" }) });
   await assert.rejects(invalid(notes), /invalid/i);
 });
@@ -195,4 +196,55 @@ test("client reports expired authentication, access denial, throttling, and time
     init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
   }) });
   await assert.rejects(timeout(notes), /timed out/i);
+});
+
+test("client rejects insecure and credential-bearing endpoints before retrieving a token or sending notes", async (context) => {
+  const variables = process.env as Record<string, string | undefined>;
+  const original = variables.NODE_ENV;
+  variables.NODE_ENV = "production";
+  context.after(() => { if (original === undefined) delete variables.NODE_ENV; else variables.NODE_ENV = original; });
+  let tokenRequests = 0;
+  let networkRequests = 0;
+  for (const endpoint of [
+    "http://api.example/analyze", "http://localhost:3000/analyze", "http://127.0.0.1:3000/analyze", "http://[::1]:3000/analyze",
+    "https://user:password@api.example/analyze", "https://user@api.example/analyze",
+    "ftp://api.example/analyze", "//api.example/analyze", "not-a-url",
+  ]) {
+    const analyze = createSentimentClient({
+      endpoint,
+      getToken: async () => { tokenRequests++; return "test-token"; },
+      fetcher: async () => { networkRequests++; return Response.json(result); },
+    });
+    await assert.rejects(analyze(notes), /HTTPS/);
+  }
+  assert.equal(tokenRequests, 0);
+  assert.equal(networkRequests, 0);
+});
+
+test("development permits HTTP loopback endpoints and rejects other hosts and embedded credentials", async (context) => {
+  const variables = process.env as Record<string, string | undefined>;
+  const original = variables.NODE_ENV;
+  variables.NODE_ENV = "development";
+  context.after(() => { if (original === undefined) delete variables.NODE_ENV; else variables.NODE_ENV = original; });
+  const endpoints: string[] = [];
+  let tokenRequests = 0;
+  for (const endpoint of ["http://localhost:3000/analyze", "http://127.0.0.1:3000/analyze", "http://[::1]:3000/analyze"]) {
+    const analyze = createSentimentClient({
+      endpoint,
+      getToken: async () => { tokenRequests++; return "test-token"; },
+      fetcher: async (url, init) => { endpoints.push(String(url)); assert.equal(init?.redirect, "error"); return Response.json(result); },
+    });
+    assert.deepEqual(await analyze(notes), result);
+  }
+  const successfulTokenRequests = tokenRequests;
+  for (const endpoint of ["http://api.example/analyze", "http://localhost.example/analyze", "http://user:password@localhost:3000/analyze"]) {
+    const analyze = createSentimentClient({
+      endpoint,
+      getToken: async () => { tokenRequests++; return "test-token"; },
+      fetcher: async (url) => { endpoints.push(String(url)); return Response.json(result); },
+    });
+    await assert.rejects(analyze(notes), /HTTPS/);
+  }
+  assert.equal(tokenRequests, successfulTokenRequests);
+  assert.equal(endpoints.length, 3);
 });

@@ -63,6 +63,8 @@ The standalone API needs `ANTHROPIC_API_KEY`, `FIREBASE_WEB_API_KEY`, and `GOOD_
 
 Track intentional Xcode/Swift/configuration source. Ignore generated web assets under `ios/App/App/public`, dependency/build caches, archives, signing material, and `.env*` files. `cap sync` does not recreate custom Swift plugins from a clean project.
 
+Keep `.claude/settings.local.json` untracked and Capacitor `loggingBehavior: "none"`; bridge debug output can contain session tokens. The analysis endpoint must use HTTPS and reject redirects. CI scans reachable history and exported assets using the checksum-pinned Gitleaks release; its allowlist contains only the exact public Firebase configuration value.
+
 After replacing old installed clients, rotate the formerly embedded Anthropic credential and Firebase account password and revoke old sessions. Removing a value from source or a local env file does not remove it from an installed app. Do not claim rotation, production rule verification, deployment, or real-device behavior without current evidence.
 
 ## Verification status
