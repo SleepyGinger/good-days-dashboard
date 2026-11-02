@@ -70,6 +70,8 @@ After replacing old installed clients, rotate the formerly embedded Anthropic cr
 
 ## Verification status
 
+Current release evidence is in [docs/IOS-RELEASE.md](docs/IOS-RELEASE.md). PR #4 is merged, production web/API deployment and authenticated synthetic analysis passed, and the final suite has 51 tests plus compiled API runtime checks. A signed iPhone 1.1 (2) candidate is prepared and scanned; physical installation, native acceptance, and credential rotation remain pending. The earlier integration record below describes the initial simulator validation.
+
 Local integration checks passed: 49 tests, app/API TypeScript, ESLint, web/iOS exports, Capacitor sync, unsigned and normal ad-hoc simulator builds with Xcode 26.5, and eight mocked browser workflow groups including footer-error visibility. Updated screenshots were visually reviewed. The ad-hoc build launched the actual native email/password screen; the Session bridge read an empty Keychain session without an error. The temporary test app was removed and simulator shut down afterward. CI includes an unsigned native compile job; a hosted CI run is separate evidence.
 
 Production dependency audit reports zero vulnerabilities; 17 moderate development/tooling advisories remain after compatible patches. Three known private configuration values were absent from 46 generated JavaScript files in a boolean-only scan. See [docs/REFACTOR.md](docs/REFACTOR.md) for scope. Real credentials/sign-in, Keychain token writes/restoration/deletion, real photo-library flows, live rules/API access, credential rotation, and TestFlight/production release remain unverified. The branch has been pushed and [draft PR #4](https://github.com/SleepyGinger/good-days-dashboard/pull/4) is open for review.
