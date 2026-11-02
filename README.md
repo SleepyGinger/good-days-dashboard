@@ -51,7 +51,7 @@ See [CLAUDE.md](CLAUDE.md) for the module map, [current review findings](docs/re
 
 ## Release status
 
-The refactor branch has been pushed; a draft PR is pending. Pushing the branch or opening a PR does not publish the app. The GitHub Pages workflow deploys pushes to `main`; the Vercel API and iOS app have separate release steps. Configure and validate the protected API before releasing clients that depend on it. Existing installed builds must transition away from embedded credentials and the retired model, followed by credential rotation.
+The refactor branch has been pushed and [draft PR #4](https://github.com/SleepyGinger/good-days-dashboard/pull/4) is open for review. Pushing the branch or opening a PR does not publish the app. The GitHub Pages workflow deploys pushes to `main`; the Vercel API and iOS app have separate release steps. Configure and validate the protected API before releasing clients that depend on it. Existing installed builds must transition away from embedded credentials and the retired model, followed by credential rotation.
 
 Local integration checks passed: 49 regression tests, app/API TypeScript, ESLint, web/iOS static exports, Capacitor sync, unsigned and ad-hoc simulator builds with Xcode 26.5, and eight mocked browser workflow groups including the footer-error visibility check. Updated screenshots were visually reviewed. The ad-hoc simulator build launched the native email/password screen and read an empty Keychain session without an error. Production dependency audit: zero reported vulnerabilities; 17 moderate development/tooling advisories remain.
 

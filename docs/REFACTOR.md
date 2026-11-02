@@ -1,6 +1,6 @@
 # Good Days refactor and release guide
 
-Prepared November 1, 2026 on `codex/good-days-refactor`. The branch has been pushed; a draft PR is pending. Local integration results are recorded below. This document describes the implementation and the release work that remains; it does not record a production deployment.
+Prepared November 1, 2026 on `codex/good-days-refactor`. The branch has been pushed and [draft PR #4](https://github.com/SleepyGinger/good-days-dashboard/pull/4) is open for review. Local integration results are recorded below. This document describes the implementation and the release work that remains; it does not record a production deployment.
 
 ## Scope and intent
 
@@ -161,4 +161,4 @@ Observed locally during integration on November 1, 2026:
 
 The launch check covers startup and reading an empty Keychain session. It does not exercise real credentials, a successful sign-in, refresh-token writes/restoration/deletion, or the actual photo-library bridge workflow. The temporary simulator app has been removed.
 
-Not yet established by this document: a hosted CI outcome; draft PR creation; a production web/API/iOS deployment or TestFlight distribution; live Firebase rule enforcement; credential rotation or session revocation; authenticated production analysis; real-device Keychain, renewal, permissions, photo upload, and recovery behavior.
+Not yet established by this document: a hosted CI outcome; a production web/API/iOS deployment or TestFlight distribution; live Firebase rule enforcement; credential rotation or session revocation; authenticated production analysis; real-device Keychain, renewal, permissions, photo upload, and recovery behavior.
