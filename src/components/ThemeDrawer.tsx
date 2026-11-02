@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Drawer,
   DrawerContent,
@@ -8,16 +8,12 @@ import {
   DrawerFooter,
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
-import { DayPicker } from "react-day-picker";
+import { DayPicker, type DateRange } from "react-day-picker";
+import type { Theme } from "@/lib/domain";
+import { isoLocal, isoToLocalDate } from "@/lib/dates";
 import "react-day-picker/dist/style.css";
 
-export interface Theme {
-  id?: string;               // present only when editing
-  title: string;
-  start: string;             // YYYY‑MM‑DD
-  end?: string | null;       // optional
-  color?: string;
-}
+export type { Theme } from "@/lib/domain";
 
 interface ThemeDrawerProps {
   open: boolean;
@@ -37,44 +33,71 @@ export default function ThemeDrawer({
   userId,
 }: ThemeDrawerProps) {
   const [title, setTitle] = useState("");
-  const [range, setRange] = useState<{ from?: Date; to?: Date }>({});
+  const [range, setRange] = useState<DateRange | undefined>();
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [month, setMonth] = useState(() => new Date());
+  const saveLock = useRef(false);
+  const newThemeId = useRef("");
 
   /* when drawer opens, hydrate fields */
   useEffect(() => {
+    if (!open) return;
+    setError(null);
+    if (!initial) newThemeId.current = crypto.randomUUID();
+    setMonth(initial ? isoToLocalDate(initial.start) : new Date());
     if (initial) {
       setTitle(initial.title);
       setRange({
-        from: new Date(initial.start),
-        to: initial.end ? new Date(initial.end) : undefined,
+        from: isoToLocalDate(initial.start),
+        to: initial.end ? isoToLocalDate(initial.end) : undefined,
       });
     } else {
       setTitle("");
-      setRange({});
+      setRange(undefined);
     }
-  }, [initial]);
+  }, [initial, open]);
 
   const handleSave = async () => {
-    if (!title.trim() || !range.from) return;
+    if (!title.trim() || !range?.from || saveLock.current) return;
+    saveLock.current = true;
     setSaving(true);
-    await onSave({
-      id: initial?.id, // may be undefined – that's fine
+    setError(null);
+    try {
+      await onSave({
+      id: initial?.id ?? newThemeId.current,
       title: title.trim(),
       start: isoLocal(range.from),
       end: range.to ? isoLocal(range.to) : null,
-    }, userId);
-    setSaving(false);
-    onOpenChange(false);
+      color: initial?.color,
+      }, userId);
+      onOpenChange(false);
+    } catch {
+      setError("Couldn’t save this theme. Your changes are still here. Try again.");
+    } finally {
+      saveLock.current = false;
+      setSaving(false);
+    }
   };
 
   const handleDelete = async () => {
-    if (!initial?.id || !onDelete) return;
-    await onDelete(initial.id, userId);
-    onOpenChange(false);
+    if (!initial?.id || !onDelete || saveLock.current) return;
+    saveLock.current = true;
+    setSaving(true);
+    setError(null);
+    try {
+      await onDelete(initial.id, userId);
+      onOpenChange(false);
+    } catch {
+      setError("Couldn’t delete this theme. Try again.");
+    } finally {
+      saveLock.current = false;
+      setSaving(false);
+    }
   };
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={(next) => { if (!saveLock.current) onOpenChange(next); }}>
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>{initial ? "Edit Theme" : "New Theme"}</DrawerTitle>
@@ -87,6 +110,7 @@ export default function ThemeDrawer({
             <input
               className="w-full rounded bg-stone-800 p-2 text-sm"
               value={title}
+              disabled={saving}
               onChange={(e) => setTitle(e.target.value)}
             />
           </div>
@@ -94,21 +118,24 @@ export default function ThemeDrawer({
           {/* Calendar range picker */}
             <DayPicker
               mode="range"
-              selected={range as any}
+              selected={range}
+              month={month}
+              onMonthChange={setMonth}
+              disabled={saving}
               // if user clears the range, DayPicker passes undefined – neutralise that
-              onSelect={(r) => setRange(r ?? {}) as any}
+              onSelect={setRange}
               numberOfMonths={1}
               // fall back to today if there's no from‑date yet
-              defaultMonth={range.from ?? new Date()}
               styles={{ day: { borderRadius: "0.5rem" } }}
             />
           <p className="text-xs opacity-60">
-            {range.from
+            {range?.from
               ? `From ${isoLocal(range.from)} ${
                   range.to ? `to ${isoLocal(range.to)}` : "(open‑ended)"
                 }`
               : "Pick a start date"}
           </p>
+          {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
         </div>
 
         <DrawerFooter className="flex justify-between">
@@ -116,26 +143,21 @@ export default function ThemeDrawer({
             <Button
               variant="destructive"
               onClick={handleDelete}
+              disabled={saving}
             >
               Delete
             </Button>
           )}
           <div className="flex gap-2 ml-auto">
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button variant="ghost" disabled={saving} onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              Save
+            <Button onClick={handleSave} disabled={saving || !title.trim() || !range?.from}>
+              {saving ? "Saving…" : "Save"}
             </Button>
           </div>
         </DrawerFooter>
       </DrawerContent>
     </Drawer>
   );
-}
-
-/* utility */
-function isoLocal(d: Date) {
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

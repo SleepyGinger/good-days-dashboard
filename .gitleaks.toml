@@ -1,0 +1,7 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public Firebase web configuration for the Good Days project; access is enforced by Firebase rules."
+regexTarget = "secret"
+regexes = ['''^AIzaSyCOGsJMsgjvHmXJ7j17hzrsHDCjKmwaGQA$''']
