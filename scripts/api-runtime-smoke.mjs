@@ -22,14 +22,15 @@ async function checkCompiledHandler(directory) {
     const address = server.address();
     assert.ok(address && typeof address !== "string");
     const url = `http://127.0.0.1:${address.port}`;
+    const request = (options) => fetch(url, { ...options, signal: AbortSignal.timeout(5_000) });
     const origin = "https://gooddays.dansalazar.org";
-    const preflight = await fetch(url, { method: "OPTIONS", headers: { Origin: origin } });
+    const preflight = await request({ method: "OPTIONS", headers: { Origin: origin } });
     assert.equal(preflight.status, 204);
     assert.equal(preflight.headers.get("Access-Control-Allow-Origin"), origin);
     assert.ok(preflight.headers.get("Access-Control-Allow-Headers").includes("Authorization"));
-    assert.equal((await fetch(url, { method: "POST", headers: { Origin: origin } })).status, 401);
-    assert.equal((await fetch(url, { headers: { Origin: origin } })).status, 405);
-    assert.equal((await fetch(url, { method: "OPTIONS", headers: { Origin: "https://other.invalid" } })).status, 403);
+    assert.equal((await request({ method: "POST", headers: { Origin: origin } })).status, 401);
+    assert.equal((await request({ headers: { Origin: origin } })).status, 405);
+    assert.equal((await request({ method: "OPTIONS", headers: { Origin: "https://other.invalid" } })).status, 403);
     console.log("Compiled API runtime: preflight, authentication, method and origin checks passed.");
   } finally {
     server.closeAllConnections();
@@ -46,14 +47,14 @@ if (process.argv[2]) {
     const compile = spawnSync(process.execPath, [
       join(root, "vercel-api/node_modules/typescript/bin/tsc"),
       "--project", join(root, "vercel-api/tsconfig.json"), "--noEmit", "false", "--outDir", directory,
-    ], { cwd: root, stdio: "inherit" });
+    ], { cwd: root, stdio: "inherit", timeout: 30_000 });
     if (compile.error) throw compile.error;
     assert.equal(compile.status, 0, "Standalone API compilation failed.");
     copyFileSync(join(root, "vercel-api/package.json"), join(directory, "package.json"));
     // Match hosts that require explicit package module metadata rather than syntax detection.
     const check = spawnSync(process.execPath, [
       "--no-experimental-detect-module", fileURLToPath(import.meta.url), directory,
-    ], { cwd: root, stdio: "inherit", env: { NODE_ENV: "production" } });
+    ], { cwd: root, stdio: "inherit", env: { NODE_ENV: "production" }, timeout: 30_000 });
     if (check.error) throw check.error;
     process.exitCode = check.status ?? 1;
   } finally {
